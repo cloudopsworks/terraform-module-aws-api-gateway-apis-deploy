@@ -43,7 +43,7 @@ locals {
   components = {
     for apiname, apivalue in local.all_apis_raw : apiname => merge(
       {
-        for cname, cvalue in apivalue.components : cname => cvalue
+        for cname, cvalue in apivalue.content.components : cname => cvalue
         if cname != "securitySchemes"
       },
       {
