@@ -78,7 +78,7 @@ locals {
           components = local.components[apiname]
         }
       )
-      sha1 = v.sha1
+      sha1 = apivalue.sha1
     }
   }
 }
