@@ -4,10 +4,14 @@
 #            Distributed Under Apache v2.0 License
 #
 
-variable "provider_cloud" {
+variable "cloud_provider" {
   description = "Provider indicator in order to perform deployment"
   type        = string
   default     = "aws"
+  validation {
+    condition     = var.cloud_provider == "aws"
+    error_message = "Only AWS is supported as cloud provider"
+  }
 }
 
 # List of apis to deploy into api gateway, follows the below format:
