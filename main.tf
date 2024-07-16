@@ -153,7 +153,7 @@ resource "aws_api_gateway_stage" "this" {
   deployment_id         = aws_api_gateway_deployment.this[each.key].id
   rest_api_id           = aws_api_gateway_rest_api.this[each.key].id
   stage_name            = local.deploy_stage_name
-  xray_tracing_enabled  = tr(var.aws_configuration.xray_enabled, false)
+  xray_tracing_enabled  = try(var.aws_configuration.xray_enabled, false)
   cache_cluster_enabled = try(var.aws_configuration.cache_cluster_enabled, false)
   cache_cluster_size    = try(var.aws_configuration.cache_cluster_size, null)
   variables = merge(length(data.aws_api_gateway_vpc_link.vpc_link) > 0 ? {
@@ -257,7 +257,7 @@ resource "aws_api_gateway_stage" "staged" {
   deployment_id         = aws_api_gateway_deployment.staged[each.key].id
   rest_api_id           = data.aws_api_gateway_rest_api.staged[each.key].id
   stage_name            = local.deploy_stage_name
-  cache_cluster_enabled = try(each.stage.cache_cluster_enabled, false)
+  cache_cluster_enabled = try(var.aws_configuration.cache_cluster_enabled, false)
   variables = merge(length(data.aws_api_gateway_vpc_link.vpc_link) > 0 ? {
     vpc_link = data.aws_api_gateway_vpc_link.vpc_link[0].id
     } : {}, {
