@@ -17,7 +17,7 @@ locals {
         content         = jsondecode(file("${var.absolute_path}/${var.api_files_dir}/${api.apisource}.json"))
         sha1            = filesha1("${var.absolute_path}/${var.api_files_dir}/${api.apisource}.json")
       }
-    }
+    } if fileexists("${var.absolute_path}/${var.api_files_dir}/${api.apisource}.json")
   ]
   yaml_apis_list = [
     for api in var.apis : {
@@ -31,7 +31,7 @@ locals {
         content         = yamldecode(file("${var.absolute_path}/${var.api_files_dir}/${api.apisource}.yaml"))
         sha1            = filesha1("${var.absolute_path}/${var.api_files_dir}/${api.apisource}.yaml")
       }
-    }
+    } if fileexists("${var.absolute_path}/${var.api_files_dir}/${api.apisource}.yaml")
   ]
   all_apis_raw               = merge(coalescelist(local.yaml_apis_list, local.json_apis_list)...)
   deploy_stage_name          = var.aws_configuration.stage
