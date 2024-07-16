@@ -114,7 +114,7 @@ resource "aws_api_gateway_rest_api" "this" {
   }
 
   name                         = each.value.name
-  body                         = each.value.json_content
+  body                         = jsonencode(each.value.content)
   disable_execute_api_endpoint = try(var.aws_configuration.disable_execute_api_endpoint, true)
   minimum_compression_size     = try(var.aws_configuration.minimum_compression_size, null)
   put_rest_api_mode            = local.config_endpoint_type == "PRIVATE" ? try(var.aws_configuration.put_rest_api_mode, "overwrite") : "overwrite"
