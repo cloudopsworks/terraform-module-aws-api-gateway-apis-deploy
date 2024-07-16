@@ -5,26 +5,105 @@
 #
 
 locals {
-  all_apis_list = [
+  json_apis_list = [
     for api in var.apis : {
       for def in var.apigw_definitions : api.name => {
         name            = api.name
         version         = api.version
         mapping         = def.mapping
         domain_name     = def.domain_name
+        authorizers     = try(var.aws_configuration.authorizers, [])
         stage_variables = try(var.aws_configuration.stage_variables, [])
-        json_content    = file("${var.absolute_path}/${var.api_files_dir}/${api.apisource}.json")
+        content         = jsondecode(file("${var.absolute_path}/${var.api_files_dir}/${api.apisource}.json"))
         sha1            = filesha1("${var.absolute_path}/${var.api_files_dir}/${api.apisource}.json")
       }
     }
   ]
-  all_apis                   = merge(local.all_apis_list...)
+  yaml_apis_list = [
+    for api in var.apis : {
+      for def in var.apigw_definitions : api.name => {
+        name            = api.name
+        version         = api.version
+        mapping         = def.mapping
+        domain_name     = def.domain_name
+        authorizers     = try(var.aws_configuration.authorizers, [])
+        stage_variables = try(var.aws_configuration.stage_variables, [])
+        content         = yamldecode(file("${var.absolute_path}/${var.api_files_dir}/${api.apisource}.yaml"))
+        sha1            = filesha1("${var.absolute_path}/${var.api_files_dir}/${api.apisource}.yaml")
+      }
+    }
+  ]
+  all_apis_raw               = merge(coalescelist(local.yaml_apis_list, local.json_apis_list)...)
   deploy_stage_name          = var.aws_configuration.stage
   deploy_stage_only          = try(var.aws_configuration.stage_only, false)
   config_endpoint_type       = try(var.aws_configuration.endpoint_type, "REGIONAL")
   default_log_location       = try(var.aws_configuration.log_location, "/aws/apigateway")
   default_log_retention_days = try(var.aws_configuration.log_retention_days, 30)
+
+  components = {
+    for apiname, apivalue in local.all_apis_raw : apiname => merge(
+      {
+        for cname, cvalue in apivalue.components : cname => cvalue
+        if cname != "securitySchemes"
+      },
+      {
+        "securitySchemes" = {
+          for auth in var.aws_configuration.authorizers : auth.name => {
+            name                           = "Authorization"
+            type                           = "apiKey"
+            in                             = "header"
+            "x-amazon-apigateway-authtype" = "custom"
+            "x-amazon-apigateway-authorizer" = {
+              authorizerUri         = data.aws_lambda_function.lambda_authorizer[auth.name].invoke_arn
+              identitySource        = try(auth.identity_source, "method.request.header.Authorization")
+              authorizerCredentials = data.aws_iam_role.lambda_exec_role[auth.name].arn
+              authorizerResultTtlInSeconds : try(auth.result_ttl_seconds, 0)
+              type : try(auth.type, "request")
+            }
+          } if auth.authtype == "lambda"
+        }
+      }
+    )
+  }
+  all_apis = {
+    for k, v in local.all_apis_raw : k => {
+      name            = v.name
+      version         = v.version
+      mapping         = v.mapping
+      domain_name     = v.domain_name
+      authorizers     = v.authorizers
+      stage_variables = v.stage_variables
+      content = merge(v.content,
+        {
+          components = local.components
+        }
+      )
+      sha1 = v.sha1
+    }
+  }
 }
+
+#################################################################
+# Lambda authorizers catalogue                                  #
+#################################################################
+data "aws_lambda_function" "lambda_authorizer" {
+  for_each = {
+    for auth in var.aws_configuration.authorizers :
+    auth.name => auth
+    if auth.authtype == "lambda"
+  }
+  function_name = each.value.lambda.function
+}
+
+data "aws_iam_role" "lambda_exec_role" {
+  for_each = {
+    for auth in var.aws_configuration.authorizers :
+    auth.name => auth
+    if auth.authtype == "lambda"
+  }
+  name = each.value.lambda.exec_role
+}
+
 
 #################################################################
 # Deploy api only if deploy_stage_only is false                 #
@@ -109,6 +188,37 @@ resource "aws_api_gateway_stage" "this" {
   }
 }
 
+data "aws_api_gateway_domain_name" "this" {
+  for_each    = local.all_apis
+  domain_name = each.value.domain_name
+}
+
+resource "aws_apigatewayv2_api_mapping" "this" {
+  for_each = {
+    for k, v in local.all_apis : k => v if local.deploy_stage_only == false
+  }
+
+  api_id          = aws_api_gateway_rest_api.this[each.key].id
+  domain_name     = data.aws_api_gateway_domain_name.this[each.key].id
+  api_mapping_key = each.value.mapping
+  stage           = aws_api_gateway_stage.this[each.key].stage_name
+}
+
+resource "aws_lambda_permission" "this" {
+  for_each = merge([
+    for api in local.all_apis : {
+      for auth in api.authorizers : "${api.name}-${auth.name}" => {
+        api_name  = api.name
+        auth_name = auth.name
+      } if auth.authtype == "lambda" && local.deploy_stage_only == false
+    }
+  ]...)
+  action              = "lambda:InvokeFunction"
+  principal           = "apigateway.amazonaws.com"
+  source_arn          = aws_api_gateway_stage.this[each.value.api_name].execution_arn
+  function_name       = data.aws_lambda_function.lambda_authorizer[each.value.auth_name].arn
+  statement_id_prefix = "${each.key}-"
+}
 
 #################################################################
 # Deploy only stage as deploy_stage_only is true                #
@@ -176,4 +286,31 @@ resource "aws_api_gateway_stage" "staged" {
   lifecycle {
     create_before_destroy = true
   }
+}
+
+resource "aws_apigatewayv2_api_mapping" "staged" {
+  for_each = {
+    for k, v in local.all_apis : k => v if local.deploy_stage_only == true
+  }
+
+  api_id          = data.aws_api_gateway_rest_api.staged[each.key].id
+  domain_name     = data.aws_api_gateway_domain_name.this[each.key].id
+  api_mapping_key = each.value.mapping
+  stage           = aws_api_gateway_stage.staged[each.key].stage_name
+}
+
+resource "aws_lambda_permission" "staged" {
+  for_each = merge([
+    for api in local.all_apis : {
+      for auth in api.authorizers : "${api.name}-${auth.name}" => {
+        api_name  = api.name
+        auth_name = auth.name
+      } if auth.authtype == "lambda" && local.deploy_stage_only == true
+    }
+  ]...)
+  action              = "lambda:InvokeFunction"
+  principal           = "apigateway.amazonaws.com"
+  source_arn          = aws_api_gateway_stage.staged[each.value.api_name].execution_arn
+  function_name       = data.aws_lambda_function.lambda_authorizer[each.value.auth_name].arn
+  statement_id_prefix = "${each.key}-"
 }

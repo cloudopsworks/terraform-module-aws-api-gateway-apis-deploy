@@ -56,8 +56,11 @@ variable "environment" {
 #  authorizers:
 #    - name: Lambda-Auth
 #      authtype: lambda
+#      result_ttl_seconds: 10
+#      identity_source: method.request.header.Authorization
+#      type: request
 #      lambda:
-#        uri: 'arn:aws:lambda:us-east-1:12345678912:function:lambda-auth-dev-lambda-exec-role'
+#        function: lambda-auth-dev
 #        exec_role: lambda-auth-dev-lambda-exec-role
 variable "aws_configuration" {
   description = "AWS configuration to deploy the api gateway."
