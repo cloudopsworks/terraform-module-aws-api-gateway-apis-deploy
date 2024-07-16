@@ -47,6 +47,9 @@ variable "environment" {
 #   - vpce-1234567890abcdef1
 #  disable_execute_api_endpoint: false
 #  minimum_compression_size: null
+#  xray_enabled: true
+#  cache_cluster_enabled: true
+#  cache_cluster_size: 0.5
 #  vpc_link_name: test-link-dev
 #  log_location: /aws/apigateway
 #  log_retention_days: 30
