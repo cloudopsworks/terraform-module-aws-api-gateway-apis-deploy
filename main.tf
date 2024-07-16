@@ -66,16 +66,16 @@ locals {
     )
   }
   all_apis = {
-    for k, v in local.all_apis_raw : k => {
-      name            = v.name
-      version         = v.version
-      mapping         = v.mapping
-      domain_name     = v.domain_name
-      authorizers     = v.authorizers
-      stage_variables = v.stage_variables
-      content = merge(v.content,
+    for apiname, apivalue in local.all_apis_raw : apiname => {
+      name            = apivalue.name
+      version         = apivalue.version
+      mapping         = apivalue.mapping
+      domain_name     = apivalue.domain_name
+      authorizers     = apivalue.authorizers
+      stage_variables = apivalue.stage_variables
+      content = merge(apivalue.content,
         {
-          components = local.components
+          components = local.components[apiname]
         }
       )
       sha1 = v.sha1
