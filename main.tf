@@ -13,11 +13,11 @@ locals {
         mapping         = def.mapping
         domain_name     = def.domain_name
         authorizers     = try(var.aws_configuration.authorizers, [])
-        stage_variables = try(var.aws_configuration.stage_variables, [])
+        stage_variables = concat(try(var.aws_configuration.stage_variables, []), try(def.stage_variables, []))
         content         = jsondecode(file("${var.absolute_path}/${var.api_files_dir}/${api.apisource}.json"))
         sha1            = filesha1("${var.absolute_path}/${var.api_files_dir}/${api.apisource}.json")
-      }
-    } if fileexists("${var.absolute_path}/${var.api_files_dir}/${api.apisource}.json")
+      } if fileexists("${var.absolute_path}/${var.api_files_dir}/${def.file_name}.json") && api.name == def.name && api.version == def.version
+    }
   ]
   yaml_apis_list = [
     for api in var.apis : {
@@ -27,13 +27,13 @@ locals {
         mapping         = def.mapping
         domain_name     = def.domain_name
         authorizers     = try(var.aws_configuration.authorizers, [])
-        stage_variables = try(var.aws_configuration.stage_variables, [])
+        stage_variables = concat(try(var.aws_configuration.stage_variables, []), try(def.stage_variables, []))
         content         = yamldecode(file("${var.absolute_path}/${var.api_files_dir}/${api.apisource}.yaml"))
         sha1            = filesha1("${var.absolute_path}/${var.api_files_dir}/${api.apisource}.yaml")
-      }
-    } if fileexists("${var.absolute_path}/${var.api_files_dir}/${api.apisource}.yaml")
+      } if fileexists("${var.absolute_path}/${var.api_files_dir}/${def.file_name}.yaml") && api.name == def.name && api.version == def.version
+    }
   ]
-  all_apis_raw               = merge(coalescelist(local.yaml_apis_list, local.json_apis_list)...)
+  all_apis_raw               = merge(concat(local.yaml_apis_list, local.json_apis_list)...)
   deploy_stage_name          = var.aws_configuration.stage
   deploy_stage_only          = try(var.aws_configuration.stage_only, false)
   config_endpoint_type       = try(var.aws_configuration.endpoint_type, "REGIONAL")

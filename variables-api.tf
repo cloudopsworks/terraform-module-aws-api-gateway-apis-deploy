@@ -17,10 +17,8 @@ variable "cloud_provider" {
 # List of apis to deploy into api gateway, follows the below format:
 #  - name: test
 #    version: v2
-#    apisource: test
 #  - name: test2
 #    version: v2
-#    apisource: test2
 variable "apis" {
   description = "List of apis to deploy into api gateway."
   type        = any
@@ -71,15 +69,22 @@ variable "aws_configuration" {
   default     = {}
 }
 
-# API Gateway definitions for each api, follows the below format:
+# API Gateway definitions for each api, follows the below format,
+#  note the second api does not has stage_variables defined because is optional:
 #  - name: test
 #    version: v2
 #    mapping: test-apis/api/2.0
 #    domain_name: apigw-dev.sample.com
+#    file_name: test
+#    stage_variables:
+#      - name: variable_name
+#        value: variable_value
 #  - name: test2
 #    version: v2
 #    mapping: test2-apis/api/2.0
 #    domain_name: apigw-dev.sample.com
+#    file_name: test
+#
 variable "apigw_definitions" {
   description = "API Gateway definitions for each api."
   type        = any
