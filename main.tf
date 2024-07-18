@@ -14,8 +14,8 @@ locals {
         domain_name     = def.domain_name
         authorizers     = try(var.aws_configuration.authorizers, [])
         stage_variables = concat(try(var.aws_configuration.stage_variables, []), try(def.stage_variables, []))
-        content         = jsondecode(file("${var.absolute_path}/${var.api_files_dir}/${api.apisource}.json"))
-        sha1            = filesha1("${var.absolute_path}/${var.api_files_dir}/${api.apisource}.json")
+        content         = jsondecode(file("${var.absolute_path}/${var.api_files_dir}/${def.file_name}.json"))
+        sha1            = filesha1("${var.absolute_path}/${var.api_files_dir}/${def.file_name}.json")
       } if fileexists("${var.absolute_path}/${var.api_files_dir}/${def.file_name}.json") && api.name == def.name && api.version == def.version
     }
   ]
@@ -28,8 +28,8 @@ locals {
         domain_name     = def.domain_name
         authorizers     = try(var.aws_configuration.authorizers, [])
         stage_variables = concat(try(var.aws_configuration.stage_variables, []), try(def.stage_variables, []))
-        content         = yamldecode(file("${var.absolute_path}/${var.api_files_dir}/${api.apisource}.yaml"))
-        sha1            = filesha1("${var.absolute_path}/${var.api_files_dir}/${api.apisource}.yaml")
+        content         = yamldecode(file("${var.absolute_path}/${var.api_files_dir}/${def.file_name}.yaml"))
+        sha1            = filesha1("${var.absolute_path}/${var.api_files_dir}/${def.file_name}.yaml")
       } if fileexists("${var.absolute_path}/${var.api_files_dir}/${def.file_name}.yaml") && api.name == def.name && api.version == def.version
     }
   ]
