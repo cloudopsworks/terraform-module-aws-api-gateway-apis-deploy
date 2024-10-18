@@ -14,9 +14,9 @@ locals {
         domain_name     = def.domain_name
         authorizers     = try(var.aws_configuration.authorizers, [])
         stage_variables = concat(try(var.aws_configuration.stage_variables, []), try(def.stage_variables, []))
-        content = fileexists("${var.absolute_path}/${var.api_files_dir}/${def.file_name}.json") ?
+        content = (fileexists("${var.absolute_path}/${var.api_files_dir}/${def.file_name}.json") ?
           jsondecode(file("${var.absolute_path}/${var.api_files_dir}/${def.file_name}.json")) :
-          yamldecode(file("${var.absolute_path}/${var.api_files_dir}/${def.file_name}.yaml"))
+        yamldecode(file("${var.absolute_path}/${var.api_files_dir}/${def.file_name}.yaml")))
         sha1 = filesha1(
           fileexists("${var.absolute_path}/${var.api_files_dir}/${def.file_name}.json") ?
           "${var.absolute_path}/${var.api_files_dir}/${def.file_name}.json" :
