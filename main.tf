@@ -184,13 +184,15 @@ resource "aws_api_gateway_stage" "this" {
 }
 
 data "aws_api_gateway_domain_name" "this" {
-  for_each    = local.all_apis
+  for_each = {
+    for k, v in local.all_apis : k => v if try(v.domain_name, "") != ""
+  }
   domain_name = each.value.domain_name
 }
 
 resource "aws_apigatewayv2_api_mapping" "this" {
   for_each = {
-    for k, v in local.all_apis : k => v if local.deploy_stage_only == false
+    for k, v in local.all_apis : k => v if local.deploy_stage_only == false && try(v.domain_name, "") != ""
   }
 
   api_id          = aws_api_gateway_rest_api.this[each.key].id
@@ -287,7 +289,7 @@ resource "aws_api_gateway_stage" "staged" {
 
 resource "aws_apigatewayv2_api_mapping" "staged" {
   for_each = {
-    for k, v in local.all_apis : k => v if local.deploy_stage_only == true
+    for k, v in local.all_apis : k => v if local.deploy_stage_only == true && try(v.domain_name, "") != ""
   }
 
   api_id          = data.aws_api_gateway_rest_api.staged[each.key].id
