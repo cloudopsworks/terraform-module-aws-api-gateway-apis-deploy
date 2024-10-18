@@ -10,8 +10,8 @@ locals {
       for def in var.apigw_definitions : api.name => {
         name            = api.name
         version         = api.version
-        mapping         = def.mapping
-        domain_name     = def.domain_name
+        mapping         = try(def.mapping, "")
+        domain_name     = try(def.domain_name, "")
         authorizers     = try(var.aws_configuration.authorizers, [])
         stage_variables = concat(try(var.aws_configuration.stage_variables, []), try(def.stage_variables, []))
         content = (fileexists("${var.absolute_path}/${var.api_files_dir}/${def.file_name}.json") ?
