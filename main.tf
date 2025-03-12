@@ -5,35 +5,27 @@
 #
 
 locals {
-  json_apis_list = [
+  apis_list = [
     for api in var.apis : {
       for def in var.apigw_definitions : api.name => {
         name            = api.name
         version         = api.version
-        mapping         = def.mapping
-        domain_name     = def.domain_name
+        mapping         = try(def.mapping, "")
+        domain_name     = try(def.domain_name, "")
         authorizers     = try(var.aws_configuration.authorizers, [])
         stage_variables = concat(try(var.aws_configuration.stage_variables, []), try(def.stage_variables, []))
-        content         = jsondecode(file("${var.absolute_path}/${var.api_files_dir}/${def.file_name}.json"))
-        sha1            = filesha1("${var.absolute_path}/${var.api_files_dir}/${def.file_name}.json")
-      } if fileexists("${var.absolute_path}/${var.api_files_dir}/${def.file_name}.json") && api.name == def.name && api.version == def.version
+        content = (fileexists("${var.absolute_path}/${var.api_files_dir}/${def.file_name}.json") ?
+          jsondecode(file("${var.absolute_path}/${var.api_files_dir}/${def.file_name}.json")) :
+        yamldecode(file("${var.absolute_path}/${var.api_files_dir}/${def.file_name}.yaml")))
+        sha1 = filesha1(
+          fileexists("${var.absolute_path}/${var.api_files_dir}/${def.file_name}.json") ?
+          "${var.absolute_path}/${var.api_files_dir}/${def.file_name}.json" :
+          "${var.absolute_path}/${var.api_files_dir}/${def.file_name}.yaml"
+        )
+      } if api.name == def.name && api.version == def.version
     }
   ]
-  yaml_apis_list = [
-    for api in var.apis : {
-      for def in var.apigw_definitions : api.name => {
-        name            = api.name
-        version         = api.version
-        mapping         = def.mapping
-        domain_name     = def.domain_name
-        authorizers     = try(var.aws_configuration.authorizers, [])
-        stage_variables = concat(try(var.aws_configuration.stage_variables, []), try(def.stage_variables, []))
-        content         = yamldecode(file("${var.absolute_path}/${var.api_files_dir}/${def.file_name}.yaml"))
-        sha1            = filesha1("${var.absolute_path}/${var.api_files_dir}/${def.file_name}.yaml")
-      } if fileexists("${var.absolute_path}/${var.api_files_dir}/${def.file_name}.yaml") && api.name == def.name && api.version == def.version
-    }
-  ]
-  all_apis_raw               = merge(concat(local.yaml_apis_list, local.json_apis_list)...)
+  all_apis_raw               = merge(local.apis_list...)
   deploy_stage_name          = var.aws_configuration.stage
   deploy_stage_only          = try(var.aws_configuration.stage_only, false)
   config_endpoint_type       = try(var.aws_configuration.endpoint_type, "REGIONAL")
@@ -153,8 +145,8 @@ resource "aws_api_gateway_stage" "this" {
   deployment_id         = aws_api_gateway_deployment.this[each.key].id
   rest_api_id           = aws_api_gateway_rest_api.this[each.key].id
   stage_name            = local.deploy_stage_name
-  xray_tracing_enabled  = try(var.aws_configuration.xray_enabled, false)
-  cache_cluster_enabled = try(var.aws_configuration.cache_cluster_enabled, false)
+  xray_tracing_enabled  = try(var.aws_configuration.xray_enabled, null)
+  cache_cluster_enabled = try(var.aws_configuration.cache_cluster_enabled, null)
   cache_cluster_size    = try(var.aws_configuration.cache_cluster_size, null)
   variables = merge(length(data.aws_api_gateway_vpc_link.vpc_link) > 0 ? {
     vpc_link = data.aws_api_gateway_vpc_link.vpc_link[0].id
@@ -191,14 +183,37 @@ resource "aws_api_gateway_stage" "this" {
   }
 }
 
+resource "aws_api_gateway_method_settings" "this" {
+  for_each = {
+    for k, v in local.all_apis : k => v if local.deploy_stage_only == false && length(try(var.aws_configuration.settings, {})) > 0
+  }
+  rest_api_id = aws_api_gateway_rest_api.this[each.key].id
+  stage_name  = aws_api_gateway_stage.this[each.key].stage_name
+  method_path = "*/*"
+  settings {
+    logging_level                              = try(var.aws_configuration.settings.logging_level, null)
+    metrics_enabled                            = try(var.aws_configuration.settings.metrics_enabled, null)
+    data_trace_enabled                         = try(var.aws_configuration.settings.data_trace_enabled, null)
+    throttling_burst_limit                     = try(var.aws_configuration.settings.throttling_burst_limit, null)
+    throttling_rate_limit                      = try(var.aws_configuration.settings.throttling_rate_limit, null)
+    caching_enabled                            = try(var.aws_configuration.settings.caching_enabled, null)
+    cache_ttl_in_seconds                       = try(var.aws_configuration.settings.cache_ttl_in_seconds, null)
+    cache_data_encrypted                       = try(var.aws_configuration.settings.cache_data_encrypted, null)
+    require_authorization_for_cache_control    = try(var.aws_configuration.settings.require_authorization_for_cache_control, null)
+    unauthorized_cache_control_header_strategy = try(var.aws_configuration.settings.unauthorized_cache_control_header_strategy, null)
+  }
+}
+
 data "aws_api_gateway_domain_name" "this" {
-  for_each    = local.all_apis
+  for_each = {
+    for k, v in local.all_apis : k => v if try(v.domain_name, "") != ""
+  }
   domain_name = each.value.domain_name
 }
 
 resource "aws_apigatewayv2_api_mapping" "this" {
   for_each = {
-    for k, v in local.all_apis : k => v if local.deploy_stage_only == false
+    for k, v in local.all_apis : k => v if local.deploy_stage_only == false && try(v.domain_name, "") != ""
   }
 
   api_id          = aws_api_gateway_rest_api.this[each.key].id
@@ -293,9 +308,30 @@ resource "aws_api_gateway_stage" "staged" {
   }
 }
 
+resource "aws_api_gateway_method_settings" "staged" {
+  for_each = {
+    for k, v in local.all_apis : k => v if local.deploy_stage_only == true && length(try(var.aws_configuration.settings, {})) > 0
+  }
+  rest_api_id = aws_api_gateway_rest_api.this[each.key].id
+  stage_name  = aws_api_gateway_stage.this[each.key].stage_name
+  method_path = "*/*"
+  settings {
+    logging_level                              = try(var.aws_configuration.settings.logging_level, null)
+    metrics_enabled                            = try(var.aws_configuration.settings.metrics_enabled, null)
+    data_trace_enabled                         = try(var.aws_configuration.settings.data_trace_enabled, null)
+    throttling_burst_limit                     = try(var.aws_configuration.settings.throttling_burst_limit, null)
+    throttling_rate_limit                      = try(var.aws_configuration.settings.throttling_rate_limit, null)
+    caching_enabled                            = try(var.aws_configuration.settings.caching_enabled, null)
+    cache_ttl_in_seconds                       = try(var.aws_configuration.settings.cache_ttl_in_seconds, null)
+    cache_data_encrypted                       = try(var.aws_configuration.settings.cache_data_encrypted, null)
+    require_authorization_for_cache_control    = try(var.aws_configuration.settings.require_authorization_for_cache_control, null)
+    unauthorized_cache_control_header_strategy = try(var.aws_configuration.settings.unauthorized_cache_control_header_strategy, null)
+  }
+}
+
 resource "aws_apigatewayv2_api_mapping" "staged" {
   for_each = {
-    for k, v in local.all_apis : k => v if local.deploy_stage_only == true
+    for k, v in local.all_apis : k => v if local.deploy_stage_only == true && try(v.domain_name, "") != ""
   }
 
   api_id          = data.aws_api_gateway_rest_api.staged[each.key].id
