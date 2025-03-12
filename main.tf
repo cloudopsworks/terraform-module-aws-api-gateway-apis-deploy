@@ -185,7 +185,7 @@ resource "aws_api_gateway_stage" "this" {
 
 resource "aws_api_gateway_method_settings" "this" {
   for_each = {
-    for k, v in local.all_apis : k => v if local.deploy_stage_only == false
+    for k, v in local.all_apis : k => v if local.deploy_stage_only == false && length(try(var.aws_configuration.settings, {})) > 0
   }
   rest_api_id = aws_api_gateway_rest_api.this[each.key].id
   stage_name  = aws_api_gateway_stage.this[each.key].stage_name
@@ -305,6 +305,27 @@ resource "aws_api_gateway_stage" "staged" {
 
   lifecycle {
     create_before_destroy = true
+  }
+}
+
+resource "aws_api_gateway_method_settings" "staged" {
+  for_each = {
+    for k, v in local.all_apis : k => v if local.deploy_stage_only == true && length(try(var.aws_configuration.settings, {})) > 0
+  }
+  rest_api_id = aws_api_gateway_rest_api.this[each.key].id
+  stage_name  = aws_api_gateway_stage.this[each.key].stage_name
+  method_path = "*/*"
+  settings {
+    logging_level                              = try(var.aws_configuration.settings.logging_level, null)
+    metrics_enabled                            = try(var.aws_configuration.settings.metrics_enabled, null)
+    data_trace_enabled                         = try(var.aws_configuration.settings.data_trace_enabled, null)
+    throttling_burst_limit                     = try(var.aws_configuration.settings.throttling_burst_limit, null)
+    throttling_rate_limit                      = try(var.aws_configuration.settings.throttling_rate_limit, null)
+    caching_enabled                            = try(var.aws_configuration.settings.caching_enabled, null)
+    cache_ttl_in_seconds                       = try(var.aws_configuration.settings.cache_ttl_in_seconds, null)
+    cache_data_encrypted                       = try(var.aws_configuration.settings.cache_data_encrypted, null)
+    require_authorization_for_cache_control    = try(var.aws_configuration.settings.require_authorization_for_cache_control, null)
+    unauthorized_cache_control_header_strategy = try(var.aws_configuration.settings.unauthorized_cache_control_header_strategy, null)
   }
 }
 
