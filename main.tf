@@ -145,8 +145,8 @@ resource "aws_api_gateway_stage" "this" {
   deployment_id         = aws_api_gateway_deployment.this[each.key].id
   rest_api_id           = aws_api_gateway_rest_api.this[each.key].id
   stage_name            = local.deploy_stage_name
-  xray_tracing_enabled  = try(var.aws_configuration.xray_enabled, false)
-  cache_cluster_enabled = try(var.aws_configuration.cache_cluster_enabled, false)
+  xray_tracing_enabled  = try(var.aws_configuration.xray_enabled, null)
+  cache_cluster_enabled = try(var.aws_configuration.cache_cluster_enabled, null)
   cache_cluster_size    = try(var.aws_configuration.cache_cluster_size, null)
   variables = merge(length(data.aws_api_gateway_vpc_link.vpc_link) > 0 ? {
     vpc_link = data.aws_api_gateway_vpc_link.vpc_link[0].id
@@ -180,6 +180,27 @@ resource "aws_api_gateway_stage" "this" {
 
   lifecycle {
     create_before_destroy = true
+  }
+}
+
+resource "aws_api_gateway_method_settings" "this" {
+  for_each = {
+    for k, v in local.all_apis : k => v if local.deploy_stage_only == false
+  }
+  rest_api_id = aws_api_gateway_rest_api.this[each.key].id
+  stage_name  = aws_api_gateway_stage.this[each.key].stage_name
+  method_path = "*/*"
+  settings {
+    logging_level                              = try(var.aws_configuration.settings.logging_level, null)
+    metrics_enabled                            = try(var.aws_configuration.settings.metrics_enabled, null)
+    data_trace_enabled                         = try(var.aws_configuration.settings.data_trace_enabled, null)
+    throttling_burst_limit                     = try(var.aws_configuration.settings.throttling_burst_limit, null)
+    throttling_rate_limit                      = try(var.aws_configuration.settings.throttling_rate_limit, null)
+    caching_enabled                            = try(var.aws_configuration.settings.caching_enabled, null)
+    cache_ttl_in_seconds                       = try(var.aws_configuration.settings.cache_ttl_in_seconds, null)
+    cache_data_encrypted                       = try(var.aws_configuration.settings.cache_data_encrypted, null)
+    require_authorization_for_cache_control    = try(var.aws_configuration.settings.require_authorization_for_cache_control, null)
+    unauthorized_cache_control_header_strategy = try(var.aws_configuration.settings.unauthorized_cache_control_header_strategy, null)
   }
 }
 
