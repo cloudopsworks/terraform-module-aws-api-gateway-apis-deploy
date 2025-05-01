@@ -1,4 +1,4 @@
-name: Terraform Transit Gateway Module
+name: Terraform AWS API Gateway REST API Deploy Module
 #logo: logo/logo.jpg
 
 license: "APACHE2"
@@ -8,17 +8,77 @@ copyrights:
     url: "https://cloudops.works"
     year: "2024"
 
-github_repo: cloudopsworks/terraform-module-aws-vpc-setup
+github_repo: cloudopsworks/terraform-module-aws-api-gateway-apis-deploy
 
 description: |-
-  VPC Module for setting up transit gateway with ResourceAccessMananger support.
+  Terraform module for deploying AWS API Gateway REST APIs. This module supports various configurations 
+  including caching, logging, and authorization settings. It also allows for the deployment of specific 
+  stages and integrates with AWS Lambda for custom authorizers.
 
 # Introduction to the project
 #introduction: |-
 #  This is an introduction.
 
 # How to use this project
-#usage: |-
+usage: |-
+  ## Terraform Usage
+  ```hcl
+  module "api_gateway" {
+    source = "github.com/cloudopsworks/terraform-module-aws-api-gateway-apis-deploy"
+    
+    aws_configuration = {
+      settings = {
+        caching_enabled                            = true
+        cache_ttl_in_seconds                       = 300
+        cache_data_encrypted                       = true
+        require_authorization_for_cache_control    = true
+        unauthorized_cache_control_header_strategy = "FAIL_WITH_403"
+        logging_level                              = "INFO"
+        metrics_enabled                            = true
+        data_trace_enabled                         = true
+        throttling_burst_limit                     = 1000
+        throttling_rate_limit                      = 500
+      }
+      cache_cluster_enabled = true
+    }
+    
+    extra_tags = {
+      Environment = "production"
+      Project     = "example"
+    }
+  }
+  ```
+
+  ## Terragrunt Usage
+  ```hcl
+  terraform {
+    source = "github.com/cloudopsworks/terraform-module-aws-api-gateway-apis-deploy"
+  }
+  
+  inputs = {
+    aws_configuration = {
+    settings = {
+    caching_enabled                            = true
+    cache_ttl_in_seconds                       = 300
+    cache_data_encrypted                       = true
+    require_authorization_for_cache_control    = true
+    unauthorized_cache_control_header_strategy = "FAIL_WITH_403"
+    logging_level                              = "INFO"
+    metrics_enabled                            = true
+    data_trace_enabled                         = true
+    throttling_burst_limit                     = 1000
+    throttling_rate_limit                      = 500
+    }
+    cache_cluster_enabled = true
+    }
+  
+  
+    extra_tags = {
+      Environment = "production"
+      Project     = "example"
+    }
+  }
+  ```
 
 # Example usage
 #examples: |-
