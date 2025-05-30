@@ -31,6 +31,8 @@ locals {
   config_endpoint_type       = try(var.aws_configuration.endpoint_type, "REGIONAL")
   default_log_location       = try(var.aws_configuration.log_location, "/aws/apigateway")
   default_log_retention_days = try(var.aws_configuration.log_retention_days, 30)
+  is_lambda                  = try(var.aws_configuration.lambda, false)
+  release_name               = try(var.release.name, "default")
 
   components = {
     for apiname, apivalue in local.all_apis_raw : apiname => merge(
@@ -73,6 +75,17 @@ locals {
       sha1 = apivalue.sha1
     }
   }
+}
+
+#################################################################
+# Lambda Function call catalogue                                #
+#################################################################
+data "aws_lambda_function" "lambda_function" {
+  for_each = {
+    for api in local.all_apis : api.name => api
+    if local.is_lambda
+  }
+  function_name = format("%s-%s", local.release_name, var.environment)
 }
 
 #################################################################
@@ -148,12 +161,18 @@ resource "aws_api_gateway_stage" "this" {
   xray_tracing_enabled  = try(var.aws_configuration.xray_enabled, null)
   cache_cluster_enabled = try(var.aws_configuration.cache_cluster_enabled, null)
   cache_cluster_size    = try(var.aws_configuration.cache_cluster_size, null)
-  variables = merge(length(data.aws_api_gateway_vpc_link.vpc_link) > 0 ? {
-    vpc_link = data.aws_api_gateway_vpc_link.vpc_link[0].id
-    } : {}, {
-    for item in each.value.stage_variables :
-    item.name => item.value
-  })
+  variables = merge(
+    length(data.aws_api_gateway_vpc_link.vpc_link) > 0 ? {
+      vpc_link = data.aws_api_gateway_vpc_link.vpc_link[0].id
+    } : {},
+    local.is_lambda ? {
+      lambdaEndpoint = data.aws_lambda_function.lambda_function[each.key].invoke_arn
+    } : {},
+    {
+      for item in each.value.stage_variables :
+      item.name => item.value
+    }
+  )
 
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.logging[each.key].arn
