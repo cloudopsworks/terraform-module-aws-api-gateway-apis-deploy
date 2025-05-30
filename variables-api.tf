@@ -98,3 +98,8 @@ variable "absolute_path" {
   default     = "."
 }
 
+variable "release" {
+  description = "Release information for the API Gateway deployment."
+  type        = any
+  default     = {}
+}
