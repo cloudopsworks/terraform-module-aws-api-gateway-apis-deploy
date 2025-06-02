@@ -58,11 +58,11 @@ resource "aws_apigatewayv2_stage" "this" {
       lambdaEndpoint = data.aws_lambda_function.lambda_function[0].invoke_arn
     } : {},
     {
-      for item in var.apigw_definition.stage_variables :
+      for item in try(var.apigw_definition.stage_variables, {}) :
       item.name => item.value
     },
     {
-      for item in var.aws_configuration.stage_variables :
+      for item in try(var.aws_configuration.stage_variables, {}) :
       item.name => item.value
     }
   )
@@ -124,11 +124,11 @@ resource "aws_apigatewayv2_stage" "staged" {
     vpc_link = data.aws_api_gateway_vpc_link.vpc_link[0].id
     } : {},
     {
-      for item in var.apigw_definition.stage_variables :
+      for item in try(var.apigw_definition.stage_variables, {}) :
       item.name => item.value
     },
     {
-      for item in var.aws_configuration.stage_variables :
+      for item in try(var.aws_configuration.stage_variables, {}) :
       item.name => item.value
     }
   )
