@@ -14,6 +14,7 @@ resource "aws_api_gateway_rest_api" "this" {
   minimum_compression_size     = try(var.aws_configuration.minimum_compression_size, null)
   put_rest_api_mode            = local.config_endpoint_type == "PRIVATE" ? try(var.aws_configuration.put_rest_api_mode, "overwrite") : "overwrite"
   body                         = jsonencode(local.final_content)
+  fail_on_warnings             = true
   endpoint_configuration {
     types            = [local.config_endpoint_type]
     vpc_endpoint_ids = try(var.aws_configuration.vpc_endpoint_ids, null)
