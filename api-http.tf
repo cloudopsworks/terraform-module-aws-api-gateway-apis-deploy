@@ -85,7 +85,6 @@ resource "aws_apigatewayv2_stage" "this" {
       "responseLength"    = "$context.responseLength"
       "error"             = "$context.error.message"
       "errorType"         = "$context.error.responseType"
-      "errorValString"    = "$context.error.validationErrorString"
     })
   }
   tags = local.all_tags
