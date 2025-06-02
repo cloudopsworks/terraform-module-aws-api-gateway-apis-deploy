@@ -5,14 +5,6 @@
 #
 
 locals {
-  content = (fileexists("${var.absolute_path}/${var.api_files_dir}/${var.apigw_definition.file_name}.json") ?
-    jsondecode(file("${var.absolute_path}/${var.api_files_dir}/${var.apigw_definition.file_name}.json")) :
-  yamldecode(file("${var.absolute_path}/${var.api_files_dir}/${var.apigw_definition.file_name}.yaml")))
-  sha1 = filesha1(
-    fileexists("${var.absolute_path}/${var.api_files_dir}/${var.apigw_definition.file_name}.json") ?
-    "${var.absolute_path}/${var.api_files_dir}/${var.apigw_definition.file_name}.json" :
-    "${var.absolute_path}/${var.api_files_dir}/${var.apigw_definition.file_name}.yaml"
-  )
   deploy_stage_name          = var.aws_configuration.stage
   deploy_stage_only          = try(var.aws_configuration.stage_only, false)
   config_endpoint_type       = try(var.aws_configuration.endpoint_type, "REGIONAL")
@@ -22,51 +14,53 @@ locals {
   release_name               = try(var.release.name, "default")
   is_http_api                = try(var.aws_configuration.http_api, false)
 
+  content_parameters = merge({
+
+    },
+    local.is_lambda ? {
+      lambdaEndpoint     = data.aws_lambda_function.lambda_function[0].invoke_arn
+      lambdaFunctionName = data.aws_lambda_function.lambda_function[0].function_name
+  } : {})
+  content = (fileexists("${var.absolute_path}/${var.api_files_dir}/${var.apigw_definition.file_name}.json") ?
+    jsondecode(templatefile("${var.absolute_path}/${var.api_files_dir}/${var.apigw_definition.file_name}.json", local.content_parameters)) :
+  yamldecode(templatefile("${var.absolute_path}/${var.api_files_dir}/${var.apigw_definition.file_name}.yaml", local.content_parameters)))
+  sha1 = filesha1(
+    fileexists("${var.absolute_path}/${var.api_files_dir}/${var.apigw_definition.file_name}.json") ?
+    "${var.absolute_path}/${var.api_files_dir}/${var.apigw_definition.file_name}.json" :
+    "${var.absolute_path}/${var.api_files_dir}/${var.apigw_definition.file_name}.yaml"
+  )
+
   #
   # FIXME: The components will be not used in the current code, so they are commented out.
-  # components = {
-  #   for apiname, apivalue in local.all_apis_raw : apiname => merge(
-  #     {
-  #       for cname, cvalue in apivalue.content.components : cname => cvalue
-  #       if cname != "securitySchemes"
-  #     },
-  #     {
-  #       "securitySchemes" = {
-  #         for auth in var.aws_configuration.authorizers : auth.name => {
-  #           name                           = "Authorization"
-  #           type                           = "apiKey"
-  #           in                             = "header"
-  #           "x-amazon-apigateway-authtype" = "custom"
-  #           "x-amazon-apigateway-authorizer" = {
-  #             authorizerUri         = data.aws_lambda_function.lambda_authorizer[auth.name].invoke_arn
-  #             identitySource        = try(auth.identity_source, "method.request.header.Authorization")
-  #             authorizerCredentials = data.aws_iam_role.lambda_exec_role[auth.name].arn
-  #             authorizerResultTtlInSeconds : try(auth.result_ttl_seconds, 0)
-  #             type : try(auth.type, "request")
-  #           }
-  #         } if auth.authtype == "lambda"
-  #       }
-  #     }
-  #   )
-  # }
-  #
-  # FIXME: The components will be not used in the current code, so they are commented out.
-  # all_apis = {
-  #   for apiname, apivalue in local.all_apis_raw : apiname => {
-  #     name            = apivalue.name
-  #     version         = apivalue.version
-  #     mapping         = apivalue.mapping
-  #     domain_name     = apivalue.domain_name
-  #     authorizers     = apivalue.authorizers
-  #     stage_variables = apivalue.stage_variables
-  #     content = merge(apivalue.content,
-  #       {
-  #         components = local.components[apiname]
-  #       }
-  #     )
-  #     sha1 = apivalue.sha1
-  #   }
-  # }
+  components = merge(
+    {
+      for cname, cvalue in content.components : cname => cvalue
+      if cname != "securitySchemes"
+    },
+    {
+      "securitySchemes" = {
+        for auth in var.aws_configuration.authorizers : auth.name => {
+          name                           = try(auth.scheme.name, "Authorization")
+          type                           = try(auth.scheme.type, "apiKey")
+          in                             = try(auth.scheme.in, "header")
+          "x-amazon-apigateway-authtype" = try(auth.scheme.authtype, "custom")
+          "x-amazon-apigateway-authorizer" = {
+            authorizerUri         = data.aws_lambda_function.lambda_authorizer[auth.name].invoke_arn
+            identitySource        = try(auth.identity_source, "method.request.header.Authorization")
+            authorizerCredentials = data.aws_iam_role.lambda_exec_role[auth.name].arn
+            authorizerResultTtlInSeconds : try(auth.result_ttl_seconds, 0)
+            type : try(auth.type, "request")
+          }
+        } if auth.authtype == "lambda"
+      }
+    }
+  )
+
+  final_content = merge(local.content,
+    {
+      components = local.components[apiname]
+    }
+  )
 }
 
 #################################################################
