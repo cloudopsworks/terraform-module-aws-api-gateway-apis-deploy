@@ -104,7 +104,7 @@ data "aws_apigatewayv2_apis" "staged" {
 
 resource "aws_apigatewayv2_deployment" "staged" {
   count       = local.deploy_stage_only == true && local.is_http_api ? 1 : 0
-  api_id      = data.aws_apigatewayv2_apis.staged[0].ids[var.apigw_definition.name]
+  api_id      = tolist(data.aws_apigatewayv2_apis.staged[0].ids)[0]
   description = "Deployment for ${var.apigw_definition.name} - ${var.environment} - Fingerprint: ${local.sha1}"
   triggers = {
     redeploy = local.sha1
@@ -117,7 +117,7 @@ resource "aws_apigatewayv2_deployment" "staged" {
 resource "aws_apigatewayv2_stage" "staged" {
   count         = local.deploy_stage_only == true && local.is_http_api ? 1 : 0
   description   = "Stage for ${var.apigw_definition.name} - ${var.environment}"
-  api_id        = data.aws_apigatewayv2_apis.staged[0].ids[0]
+  api_id        = tolist(data.aws_apigatewayv2_apis.staged[0].ids)[0]
   deployment_id = aws_apigatewayv2_deployment.staged[0].id
   name          = local.deploy_stage_name
   stage_variables = merge(length(data.aws_api_gateway_vpc_link.vpc_link) > 0 ? {
@@ -162,8 +162,8 @@ resource "aws_apigatewayv2_stage" "staged" {
 }
 
 resource "aws_apigatewayv2_api_mapping" "staged" {
-  count           = local.deploy_stage_only == true && try(var.apigw_definition.domain_name, "") != ""
-  api_id          = local.is_http_api ? data.aws_apigatewayv2_apis.staged[0].id[0] : data.aws_api_gateway_rest_api.staged[0].id
+  count           = local.deploy_stage_only == true && try(var.apigw_definition.domain_name, "") != "" ? 1 : 0
+  api_id          = local.is_http_api ? tolist(data.aws_apigatewayv2_apis.staged[0].id)[0] : data.aws_api_gateway_rest_api.staged[0].id
   stage           = local.is_http_api ? aws_apigatewayv2_stage.staged[0].name : aws_api_gateway_stage.staged[0].stage_name
   domain_name     = data.aws_api_gateway_domain_name.this[0].id
   api_mapping_key = var.apigw_definition.mapping

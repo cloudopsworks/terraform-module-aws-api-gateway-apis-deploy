@@ -37,7 +37,7 @@ locals {
   # FIXME: The components will be not used in the current code, so they are commented out.
   components = merge(
     {
-      for cname, cvalue in content.components : cname => cvalue
+      for cname, cvalue in local.content.components : cname => cvalue
       if cname != "securitySchemes"
     },
     {
@@ -61,7 +61,7 @@ locals {
 
   final_content = merge(local.content,
     {
-      components = local.components[apiname]
+      components = local.components
     }
   )
 }
