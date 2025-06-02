@@ -9,16 +9,12 @@
 # Deploy api only if deploy_stage_only is false                 #
 #################################################################
 resource "aws_apigatewayv2_api" "this" {
-  for_each = {
-    for k, v in local.all_apis : k => v if local.deploy_stage_only == false && local.is_http_api
-  }
-
-  name          = each.value.name
-  protocol_type = "HTTP"
-  body          = jsonencode(each.value.content)
-  description   = "API Gateway HTTP API for ${each.value.name} - ${var.environment}"
-  tags          = local.all_tags
-
+  count                        = local.deploy_stage_only == false && local.is_http_api ? 1 : 0
+  name                         = var.apigw_definition.name
+  protocol_type                = "HTTP"
+  version                      = var.apigw_definition.version
+  disable_execute_api_endpoint = (!try(var.aws_configuration.enable_execute_api_endpoint, false))
+  description                  = "API Gateway HTTP API for ${var.apigw_definition.name} - ${var.environment}"
   cors_configuration {
     allow_credentials = try(var.aws_configuration.cors.allow_credentials, false)
     allow_headers     = try(var.aws_configuration.cors.allow_headers, [])
@@ -27,20 +23,16 @@ resource "aws_apigatewayv2_api" "this" {
     expose_headers    = try(var.aws_configuration.cors.expose_headers, [])
     max_age           = try(var.aws_configuration.cors.max_age, null)
   }
+  tags = local.all_tags
 }
 
 resource "aws_apigatewayv2_deployment" "this" {
-  for_each = {
-    for k, v in local.all_apis : k => v if local.deploy_stage_only == false && local.is_http_api
-  }
-
-  api_id      = aws_apigatewayv2_api.this[each.key].id
-  description = "Deployment for ${each.value.name} - ${var.environment} - Fingerprint: ${each.value.sha1}"
-
+  count       = local.deploy_stage_only == false && local.is_http_api ? 1 : 0
+  api_id      = aws_apigatewayv2_api.this[0].id
+  description = "Deployment for ${var.apigw_definition.name} - ${var.environment} - Fingerprint: ${local.sha1}"
   triggers = {
-    redeploy = each.value.sha1
+    redeploy = local.sha1
   }
-
   lifecycle {
     create_before_destroy = true
   }
@@ -52,27 +44,29 @@ data "aws_api_gateway_vpc_link" "vpc_link" {
 }
 
 resource "aws_apigatewayv2_stage" "this" {
-  for_each = {
-    for k, v in local.all_apis : k => v if local.deploy_stage_only == false && local.is_http_api
-  }
-  description   = "Stage for ${each.value.name} - ${var.environment}"
-  api_id        = aws_apigatewayv2_api.this[each.key].id
-  deployment_id = aws_apigatewayv2_deployment.this[each.key].id
+  count         = local.deploy_stage_only == false && local.is_http_api ? 1 : 0
+  description   = "Stage for ${var.apigw_definition.name} - ${var.environment}"
+  api_id        = aws_apigatewayv2_api.this[0].id
+  deployment_id = aws_apigatewayv2_deployment.this[0].id
   name          = local.deploy_stage_name
   stage_variables = merge(
     length(data.aws_api_gateway_vpc_link.vpc_link) > 0 ? {
       vpc_link = data.aws_api_gateway_vpc_link.vpc_link[0].id
     } : {},
     local.is_lambda ? {
-      lambdaEndpoint = data.aws_lambda_function.lambda_function[each.key].invoke_arn
+      lambdaEndpoint = data.aws_lambda_function.lambda_function[0].invoke_arn
     } : {},
     {
-      for item in each.value.stage_variables :
+      for item in var.apigw_definition.stage_variables :
+      item.name => item.value
+    },
+    {
+      for item in var.aws_configuration.stage_variables :
       item.name => item.value
     }
   )
   access_log_settings {
-    destination_arn = aws_cloudwatch_log_group.logging[each.key].arn
+    destination_arn = aws_cloudwatch_log_group.logging.arn
     format = jsonencode({
       "requestId"         = "$context.requestId"
       "extendedRequestId" = "$context.extendedRequestId"
@@ -93,7 +87,6 @@ resource "aws_apigatewayv2_stage" "this" {
     })
   }
   tags = local.all_tags
-
   lifecycle {
     create_before_destroy = true
   }
@@ -103,22 +96,17 @@ resource "aws_apigatewayv2_stage" "this" {
 # Deploy only stage as deploy_stage_only is true                #
 #################################################################
 data "aws_apigatewayv2_apis" "staged" {
-  for_each = {
-    for k, v in local.all_apis : k => v if local.deploy_stage_only == true && local.is_http_api
-  }
+  count         = local.deploy_stage_only == true && local.is_http_api ? 1 : 0
   protocol_type = "HTTP"
-  name          = each.value.name
+  name          = var.apigw_definition.name
 }
 
 resource "aws_apigatewayv2_deployment" "staged" {
-  for_each = {
-    for k, v in local.all_apis : k => v if local.deploy_stage_only == true && local.is_http_api
-  }
-  api_id      = data.aws_apigatewayv2_apis.staged[each.key].ids[0]
-  description = "Deployment for ${each.value.name} - ${var.environment} - Fingerprint: ${each.value.sha1}"
-
+  count       = local.deploy_stage_only == true && local.is_http_api ? 1 : 0
+  api_id      = data.aws_apigatewayv2_apis.staged[0].ids[var.apigw_definition.name]
+  description = "Deployment for ${var.apigw_definition.name} - ${var.environment} - Fingerprint: ${local.sha1}"
   triggers = {
-    redeploy = each.value.sha1
+    redeploy = local.sha1
   }
   lifecycle {
     create_before_destroy = true
@@ -126,22 +114,26 @@ resource "aws_apigatewayv2_deployment" "staged" {
 }
 
 resource "aws_apigatewayv2_stage" "staged" {
-  for_each = {
-    for k, v in local.all_apis : k => v if local.deploy_stage_only == true && local.is_http_api
-  }
-  description   = "Stage for ${each.value.name} - ${var.environment}"
-  api_id        = data.aws_apigatewayv2_apis.staged[each.key].ids[0]
-  deployment_id = aws_apigatewayv2_deployment.staged[each.key].id
+  count         = local.deploy_stage_only == true && local.is_http_api ? 1 : 0
+  description   = "Stage for ${var.apigw_definition.name} - ${var.environment}"
+  api_id        = data.aws_apigatewayv2_apis.staged[0].ids[0]
+  deployment_id = aws_apigatewayv2_deployment.staged[0].id
   name          = local.deploy_stage_name
   stage_variables = merge(length(data.aws_api_gateway_vpc_link.vpc_link) > 0 ? {
     vpc_link = data.aws_api_gateway_vpc_link.vpc_link[0].id
-    } : {}, {
-    for item in each.value.stage_variables :
-    item.name => item.value
-  })
+    } : {},
+    {
+      for item in var.apigw_definition.stage_variables :
+      item.name => item.value
+    },
+    {
+      for item in var.aws_configuration.stage_variables :
+      item.name => item.value
+    }
+  )
 
   access_log_settings {
-    destination_arn = aws_cloudwatch_log_group.logging[each.key].arn
+    destination_arn = aws_cloudwatch_log_group.logging.arn
     format = jsonencode({
       "requestId"         = "$context.requestId"
       "extendedRequestId" = "$context.extendedRequestId"
@@ -169,12 +161,9 @@ resource "aws_apigatewayv2_stage" "staged" {
 }
 
 resource "aws_apigatewayv2_api_mapping" "staged" {
-  for_each = {
-    for k, v in local.all_apis : k => v if local.deploy_stage_only == true && try(v.domain_name, "") != ""
-  }
-
-  api_id          = local.is_http_api ? data.aws_apigatewayv2_apis.staged[each.key].id[0] : data.aws_api_gateway_rest_api.staged[each.key].id
-  stage           = local.is_http_api ? aws_apigatewayv2_stage.staged[each.key].name : aws_api_gateway_stage.staged[each.key].stage_name
-  domain_name     = data.aws_api_gateway_domain_name.this[each.key].id
-  api_mapping_key = each.value.mapping
+  count           = local.deploy_stage_only == true && try(var.apigw_definition.domain_name, "") != ""
+  api_id          = local.is_http_api ? data.aws_apigatewayv2_apis.staged[0].id[0] : data.aws_api_gateway_rest_api.staged[0].id
+  stage           = local.is_http_api ? aws_apigatewayv2_stage.staged[0].name : aws_api_gateway_stage.staged[0].stage_name
+  domain_name     = data.aws_api_gateway_domain_name.this[0].id
+  api_mapping_key = var.apigw_definition.mapping
 }

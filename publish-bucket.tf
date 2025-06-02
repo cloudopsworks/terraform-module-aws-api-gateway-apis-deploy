@@ -10,12 +10,9 @@ data "aws_s3_bucket" "publish_bucket" {
 }
 
 resource "aws_s3_object" "publish_bucket_api" {
-  for_each = {
-    for apiname, api in local.all_apis : apiname => api
-    if try(var.aws_configuration.publish_bucket.enabled, false) == true
-  }
+  count   = try(var.aws_configuration.publish_bucket.enabled, false) == true ? 1 : 0
   bucket  = data.aws_s3_bucket.publish_bucket[0].bucket
-  key     = "${try(var.aws_configuration.publish_bucket.prefix_path, "")}/${each.value.name}.yaml"
-  content = yamlencode(each.value.content)
+  key     = "${try(var.aws_configuration.publish_bucket.prefix_path, "")}/${var.apigw_definition.name}.yaml"
+  content = yamlencode(local.content)
   tags    = var.extra_tags
 }
