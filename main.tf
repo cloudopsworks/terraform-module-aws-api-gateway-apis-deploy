@@ -15,7 +15,10 @@ locals {
   is_http_api                = try(var.aws_configuration.http_api, false)
 
   content_parameters = merge({
-
+    for k, v in data.aws_lambda_function.lambda_authorizer : k => {
+      authorizer_uri         = v.invoke_arn
+      authorizer_credentials = data.aws_iam_role.lambda_exec_role[k].arn
+    }
     },
     local.is_lambda ? {
       lambdaEndpoint     = data.aws_lambda_function.lambda_function[0].invoke_arn
