@@ -48,13 +48,13 @@ locals {
           in                             = try(auth.scheme.in, "header")
           "x-amazon-apigateway-authtype" = try(auth.scheme.authtype, "custom")
           "x-amazon-apigateway-authorizer" = {
-            authorizerUri         = data.aws_lambda_function.lambda_authorizer[auth.name].invoke_arn
-            identitySource        = try(auth.identity_source, "$request.header.Authorization")
-            authorizerCredentials = data.aws_iam_role.lambda_exec_role[auth.name].arn
-            authorizerResultTtlInSeconds = try(auth.result_ttl_seconds, 0)
+            authorizerUri                  = data.aws_lambda_function.lambda_authorizer[auth.name].invoke_arn
+            identitySource                 = try(auth.identity_source, "$request.header.Authorization")
+            authorizerCredentials          = data.aws_iam_role.lambda_exec_role[auth.name].arn
+            authorizerResultTtlInSeconds   = try(auth.result_ttl_seconds, 0)
             authorizerPayloadFormatVersion = try(auth.payload_format_version, "2.0")
-            enableSimpleResponses = try(auth.enable_simple_responses, false)
-            type = try(auth.type, "REQUEST")
+            enableSimpleResponses          = try(auth.enable_simple_responses, false)
+            type                           = upper(try(auth.type, "request"))
           }
         } if auth.authtype == "lambda"
       }
