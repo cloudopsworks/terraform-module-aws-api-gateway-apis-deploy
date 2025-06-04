@@ -4,6 +4,12 @@
 #            Distributed Under Apache v2.0 License
 #
 
+# AWS API Gateway REST API VPC Link
+data "aws_api_gateway_vpc_link" "vpc_link" {
+  count = try(var.aws_configuration.vpc_link_name, var.aws_configuration.rest_vpc_link_name, "") != "" ? 1 : 0
+  name  = try(var.aws_configuration.vpc_link_name, var.aws_configuration.rest_vpc_link_name, "")
+}
+
 #################################################################
 # Deploy api only if deploy_stage_only is false                 #
 #################################################################
