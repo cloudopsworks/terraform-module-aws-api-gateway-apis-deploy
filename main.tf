@@ -14,16 +14,24 @@ locals {
   release_name               = try(var.release.name, "default")
   is_http_api                = try(var.aws_configuration.http_api, false)
 
-  content_parameters = merge({
-    for k, v in data.aws_lambda_function.lambda_authorizer : k => {
-      authorizer_uri         = v.invoke_arn
-      authorizer_credentials = data.aws_iam_role.lambda_exec_role[k].arn
-    }
+  content_parameters = merge(
+    {
+      for k, v in data.aws_lambda_function.lambda_authorizer : k => {
+        authorizer_uri         = v.invoke_arn
+        authorizer_credentials = data.aws_iam_role.lambda_exec_role[k].arn
+      }
     },
     local.is_lambda ? {
       lambdaEndpoint     = data.aws_lambda_function.lambda_function[0].invoke_arn
       lambdaFunctionName = data.aws_lambda_function.lambda_function[0].function_name
-  } : {})
+    } : {},
+    try(var.aws_configuration.http_vpc_link.type, "") == "lb" ? {
+      elb = {
+        server_name = var.aws_configuration.http_vpc_link.server_name
+        endpoint    = data.aws_lb_listener.vpc_link[0].arn
+      }
+    } : {}
+  )
   content = (fileexists("${var.absolute_path}/${var.api_files_dir}/${var.apigw_definition.file_name}.json") ?
     jsondecode(templatefile("${var.absolute_path}/${var.api_files_dir}/${var.apigw_definition.file_name}.json", local.content_parameters)) :
   yamldecode(templatefile("${var.absolute_path}/${var.api_files_dir}/${var.apigw_definition.file_name}.yaml", local.content_parameters)))

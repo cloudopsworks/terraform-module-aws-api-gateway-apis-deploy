@@ -6,8 +6,20 @@
 
 # AWS API Gateway HTTP API VPC Link
 data "aws_apigatewayv2_vpc_link" "vpc_link" {
-  count       = try(var.aws_configuration.http_vpc_link_id, "") != "" ? 1 : 0
-  vpc_link_id = var.aws_configuration.http_vpc_link_id
+  count       = try(var.aws_configuration.http_vpc_link.id, "") != "" ? 1 : 0
+  vpc_link_id = var.aws_configuration.http_vpc_link.id
+}
+
+# VPC Link type: ELB
+data "aws_lb" "vpc_link" {
+  count = try(var.aws_configuration.http_vpc_link.type, "") == "lb" ? 1 : 0
+  name  = var.aws_configuration.http_vpc_link.lb.name
+}
+
+data "aws_lb_listener" "vpc_link" {
+  count             = try(var.aws_configuration.http_vpc_link.type, "") == "lb" ? 1 : 0
+  load_balancer_arn = data.aws_lb.vpc_link[0].arn
+  port              = var.aws_configuration.http_vpc_link.lb.listener_port
 }
 
 #################################################################
