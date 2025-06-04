@@ -21,7 +21,7 @@ resource "aws_apigatewayv2_api" "this" {
   disable_execute_api_endpoint = (!try(var.aws_configuration.enable_execute_api_endpoint, false))
   description                  = "API Gateway HTTP API for ${var.apigw_definition.name} - ${var.environment}"
   body                         = jsonencode(local.final_content)
-  fail_on_warnings             = true
+  fail_on_warnings             = try(var.aws_configuration.fail_on_warnings, true)
   cors_configuration {
     allow_credentials = try(var.aws_configuration.cors.allow_credentials, false)
     allow_headers     = try(var.aws_configuration.cors.allow_headers, [])
