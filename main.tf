@@ -84,6 +84,15 @@ data "aws_lambda_function" "lambda_function" {
   function_name = format("%s-%s", local.release_name, var.environment)
 }
 
+resource "aws_lambda_permission" "lambda_function" {
+  count               = local.is_lambda ? 1 : 0
+  action              = "lambda:InvokeFunction"
+  principal           = "apigateway.amazonaws.com"
+  source_arn          = local.is_http_api ? aws_apigatewayv2_stage.this[0].execution_arn : aws_api_gateway_stage.this[0].execution_arn
+  function_name       = data.aws_lambda_function.lambda_function[0].arn
+  statement_id_prefix = format("apicall-%s", var.apigw_definition.name)
+}
+
 #################################################################
 # Lambda authorizers catalogue                                  #
 #################################################################
