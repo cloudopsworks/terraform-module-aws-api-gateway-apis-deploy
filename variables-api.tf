@@ -28,7 +28,9 @@ variable "environment" {
 #  xray_enabled: true
 #  cache_cluster_enabled: true
 #  cache_cluster_size: 0.5
-#  vpc_link_name: test-link-dev
+#  vpc_link_name: test-link-dev # DEPRECATED
+#  rest_vpc_link_name: test-link-dev # Replaces: vpc_link_name
+#  http_vpc_link_id: test-http-link-dev
 #  log_location: /aws/apigateway
 #  log_retention_days: 30
 #  stage_variables:

@@ -4,6 +4,11 @@
 #            Distributed Under Apache v2.0 License
 #
 
+# AWS API Gateway HTTP API VPC Link
+data "aws_apigatewayv2_vpc_link" "vpc_link" {
+  count       = try(var.aws_configuration.http_vpc_link_id, "") != "" ? 1 : 0
+  vpc_link_id = var.aws_configuration.http_vpc_link_id
+}
 
 #################################################################
 # Deploy api only if deploy_stage_only is false                 #
@@ -40,11 +45,6 @@ resource "aws_apigatewayv2_deployment" "this" {
   }
 }
 
-data "aws_api_gateway_vpc_link" "vpc_link" {
-  count = try(var.aws_configuration.vpc_link_name, "") != "" ? 1 : 0
-  name  = var.aws_configuration.vpc_link_name
-}
-
 resource "aws_apigatewayv2_stage" "this" {
   count         = local.deploy_stage_only == false && local.is_http_api ? 1 : 0
   description   = "Stage for ${var.apigw_definition.name} - ${var.environment}"
@@ -52,8 +52,8 @@ resource "aws_apigatewayv2_stage" "this" {
   deployment_id = aws_apigatewayv2_deployment.this[0].id
   name          = local.deploy_stage_name
   stage_variables = merge(
-    length(data.aws_api_gateway_vpc_link.vpc_link) > 0 ? {
-      vpc_link = data.aws_api_gateway_vpc_link.vpc_link[0].id
+    length(data.aws_apigatewayv2_vpc_link.vpc_link) > 0 ? {
+      vpc_link = data.aws_apigatewayv2_vpc_link.vpc_link[0].id
     } : {},
     local.is_lambda ? {
       lambdaEndpoint = data.aws_lambda_function.lambda_function[0].invoke_arn
@@ -120,8 +120,8 @@ resource "aws_apigatewayv2_stage" "staged" {
   api_id        = tolist(data.aws_apigatewayv2_apis.staged[0].ids)[0]
   deployment_id = aws_apigatewayv2_deployment.staged[0].id
   name          = local.deploy_stage_name
-  stage_variables = merge(length(data.aws_api_gateway_vpc_link.vpc_link) > 0 ? {
-    vpc_link = data.aws_api_gateway_vpc_link.vpc_link[0].id
+  stage_variables = merge(length(data.aws_apigatewayv2_vpc_link.vpc_link) > 0 ? {
+    vpc_link = data.aws_apigatewayv2_vpc_link.vpc_link[0].id
     } : {},
     {
       for item in try(var.apigw_definition.stage_variables, {}) :
