@@ -5,7 +5,7 @@
 #
 
 resource "aws_cloudwatch_log_group" "logging" {
-  name              = "${local.default_log_location}/${local.deploy_stage_name}/${var.apigw_definition.name}"
+  name              = "${local.default_log_location}/${local.deploy_stage_name}/${var.apigw_definition.name}/${var.apigw_definition.version}"
   retention_in_days = local.default_log_retention_days
   tags              = local.all_tags
 }
