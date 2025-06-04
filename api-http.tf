@@ -29,7 +29,7 @@ resource "aws_apigatewayv2_api" "this" {
   count                        = local.deploy_stage_only == false && local.is_http_api ? 1 : 0
   name                         = var.apigw_definition.name
   version                      = var.apigw_definition.version
-  description                  = format("API Gateway HTTP API for %s - Version: %s - Environment: %s,\n%s", var.apigw_definition.name, var.apigw_definition.version, var.environment, try(local.final_content, ""))
+  description                  = format("API Gateway HTTP API for %s - Version: %s - Environment: %s,\n%s", var.apigw_definition.name, var.apigw_definition.version, var.environment, try(local.final_content.info.description, ""))
   protocol_type                = "HTTP"
   disable_execute_api_endpoint = (!try(var.aws_configuration.enable_execute_api_endpoint, false))
   body                         = jsonencode(local.final_content)

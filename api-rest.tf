@@ -16,7 +16,7 @@ data "aws_api_gateway_vpc_link" "vpc_link" {
 resource "aws_api_gateway_rest_api" "this" {
   count                        = local.deploy_stage_only == false && (!local.is_http_api) ? 1 : 0
   name                         = var.apigw_definition.name
-  description                  = format("API Gateway HTTP API for %s - Version: %s - Environment: %s,\n%s", var.apigw_definition.name, var.apigw_definition.version, var.environment, try(local.final_content, ""))
+  description                  = format("API Gateway HTTP API for %s - Version: %s - Environment: %s,\n%s", var.apigw_definition.name, var.apigw_definition.version, var.environment, try(local.final_content.info.description, ""))
   disable_execute_api_endpoint = try(var.aws_configuration.disable_execute_api_endpoint, true)
   minimum_compression_size     = try(var.aws_configuration.minimum_compression_size, null)
   put_rest_api_mode            = local.config_endpoint_type == "PRIVATE" ? try(var.aws_configuration.put_rest_api_mode, "overwrite") : "overwrite"
