@@ -28,10 +28,10 @@ data "aws_lb_listener" "vpc_link" {
 resource "aws_apigatewayv2_api" "this" {
   count                        = local.deploy_stage_only == false && local.is_http_api ? 1 : 0
   name                         = var.apigw_definition.name
-  protocol_type                = "HTTP"
   version                      = var.apigw_definition.version
+  description                  = format("API Gateway HTTP API for %s - Version: %s - Environment: %s,\n%s", var.apigw_definition.name, var.apigw_definition.version, var.environment, try(local.final_content, ""))
+  protocol_type                = "HTTP"
   disable_execute_api_endpoint = (!try(var.aws_configuration.enable_execute_api_endpoint, false))
-  description                  = "API Gateway HTTP API for ${var.apigw_definition.name} - ${var.environment}"
   body                         = jsonencode(local.final_content)
   fail_on_warnings             = try(var.aws_configuration.fail_on_warnings, true)
   cors_configuration {
