@@ -69,7 +69,23 @@ locals {
           }
         } if auth.authtype == "lambda"
       }
-    }
+    },
+    local.is_lambda ? {
+      "x-amazon-apigateway-integrations" = {
+        "lambda_integration" = {
+          payloadFormatVersion = try(var.aws_configuration.lambda_options.format_version, "2.0")
+          type                 = "aws_proxy"
+          httpMethod           = "POST"
+          uri                  = data.aws_lambda_function.lambda_function[0].invoke_arn
+          credentials          = data.aws_iam_role.lambda_function_exec_role[0].arn
+          connectionType       = "INTERNET"
+          responses            = try(var.aws_configuration.lambda_options.responses, {})
+          passthroughBehavior  = try(var.aws_configuration.lambda_options.pass_through_behavior, "when_no_match")
+          timeoutInMillis : try(var.aws_configuration.lambda_options.timeout_millis, 30000)
+          contentHandling : try(var.aws_configuration.lambda_options.content_handling, "CONVERT_TO_TEXT")
+        }
+      }
+    } : {}
   )
 
   final_content = merge(local.content,
