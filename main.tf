@@ -88,7 +88,7 @@ resource "local_file" "final_content_json" {
 resource "local_file" "final_content_yaml" {
   count    = var.debug ? 1 : 0
   filename = "${var.absolute_path}/${var.api_files_dir}/${var.apigw_definition.file_name}_final.yaml"
-  content  = yamldecode(local.final_content)
+  content  = yamlencode(local.final_content)
 }
 
 #################################################################
