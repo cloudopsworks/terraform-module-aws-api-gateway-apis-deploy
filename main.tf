@@ -18,12 +18,14 @@ locals {
     {
       for k, v in data.aws_lambda_function.lambda_authorizer : k => {
         authorizer_uri         = v.invoke_arn
-        authorizer_credentials = data.aws_iam_role.lambda_exec_role[k].arn
+        authorizer_credentials = data.aws_iam_role.lambda_auth_exec_role[k].arn
       }
     },
     local.is_lambda ? {
-      lambdaEndpoint     = data.aws_lambda_function.lambda_function[0].invoke_arn
-      lambdaFunctionName = data.aws_lambda_function.lambda_function[0].function_name
+      lambdaEndpoint            = data.aws_lambda_function.lambda_function[0].invoke_arn
+      lambdaFunctionEndpoint    = data.aws_lambda_function.lambda_function[0].invoke_arn
+      lambdaFunctionName        = data.aws_lambda_function.lambda_function[0].function_name
+      lambdaFunctionExecRoleArn = data.aws_iam_role.lambda_function_exec_role[0].arn
     } : {},
     try(var.aws_configuration.http_vpc_link.type, "") == "lb" ? {
       elb = {
@@ -58,7 +60,7 @@ locals {
           "x-amazon-apigateway-authorizer" = {
             authorizerUri                  = data.aws_lambda_function.lambda_authorizer[auth.name].invoke_arn
             identitySource                 = try(auth.identity_source, "$request.header.Authorization")
-            authorizerCredentials          = data.aws_iam_role.lambda_exec_role[auth.name].arn
+            authorizerCredentials          = data.aws_iam_role.lambda_auth_exec_role[auth.name].arn
             authorizerResultTtlInSeconds   = try(auth.result_ttl_seconds, 0)
             authorizerPayloadFormatVersion = try(auth.payload_format_version, "2.0")
             enableSimpleResponses          = try(auth.enable_simple_responses, false)
@@ -84,6 +86,11 @@ data "aws_lambda_function" "lambda_function" {
   function_name = format("%s-%s", local.release_name, var.environment)
 }
 
+data "aws_iam_role" "lambda_function_exec_role" {
+  count = local.is_lambda ? 1 : 0
+  name  = format("%s-%s-exec-role", local.release_name, var.environment)
+}
+
 resource "aws_lambda_permission" "lambda_function" {
   count               = local.is_lambda ? 1 : 0
   action              = "lambda:InvokeFunction"
@@ -105,7 +112,7 @@ data "aws_lambda_function" "lambda_authorizer" {
   function_name = each.value.lambda.function
 }
 
-data "aws_iam_role" "lambda_exec_role" {
+data "aws_iam_role" "lambda_auth_exec_role" {
   for_each = {
     for auth in var.aws_configuration.authorizers :
     auth.name => auth
