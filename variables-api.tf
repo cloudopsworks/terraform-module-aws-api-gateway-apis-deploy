@@ -111,3 +111,9 @@ variable "cloud_type" {
     error_message = "Only AWS types (lambda, beanstalk, eks, kubernetes, ecs) are supported as cloud type"
   }
 }
+
+variable "debug" {
+  description = "Enable debug mode to output final content in JSON and YAML formats."
+  type        = bool
+  default     = false
+}

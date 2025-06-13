@@ -26,7 +26,7 @@ locals {
       lambdaFunctionEndpoint    = data.aws_lambda_function.lambda_function[0].invoke_arn
       lambdaFunctionName        = data.aws_lambda_function.lambda_function[0].function_name
       lambdaFunctionExecRoleArn = data.aws_iam_role.lambda_function_exec_role[0].arn
-      lambdaFunctionRoleArn = data.aws_iam_role.lambda_function_exec_role[0].arn
+      lambdaFunctionRoleArn     = data.aws_iam_role.lambda_function_exec_role[0].arn
     } : {},
     try(var.aws_configuration.http_vpc_link.type, "") == "lb" ? {
       elb = {
@@ -77,6 +77,18 @@ locals {
       components = local.components
     }
   )
+}
+
+resource "local_file" "final_content_json" {
+  count    = var.debug ? 1 : 0
+  filename = "${var.absolute_path}/${var.api_files_dir}/${var.apigw_definition.file_name}_final.json"
+  content  = jsonencode(local.final_content)
+}
+
+resource "local_file" "final_content_yaml" {
+  count    = var.debug ? 1 : 0
+  filename = "${var.absolute_path}/${var.api_files_dir}/${var.apigw_definition.file_name}_final.yaml"
+  content  = yamldecode(local.final_content)
 }
 
 #################################################################
