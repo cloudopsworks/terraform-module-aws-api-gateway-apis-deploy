@@ -26,6 +26,7 @@ locals {
       lambdaFunctionEndpoint    = data.aws_lambda_function.lambda_function[0].invoke_arn
       lambdaFunctionName        = data.aws_lambda_function.lambda_function[0].function_name
       lambdaFunctionExecRoleArn = data.aws_iam_role.lambda_function_exec_role[0].arn
+      lambdaFunctionRoleArn = data.aws_iam_role.lambda_function_exec_role[0].arn
     } : {},
     try(var.aws_configuration.http_vpc_link.type, "") == "lb" ? {
       elb = {
