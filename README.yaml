@@ -11,13 +11,26 @@ copyrights:
 github_repo: cloudopsworks/terraform-module-aws-api-gateway-apis-deploy
 
 description: |-
-  Terraform module for deploying AWS API Gateway REST APIs. This module supports various configurations 
-  including caching, logging, and authorization settings. It also allows for the deployment of specific 
-  stages and integrates with AWS Lambda for custom authorizers.
+  Terraform module for deploying AWS API Gateway REST APIs with advanced configuration options. This module 
+  provides comprehensive management of API Gateway resources including stage deployments, caching strategies, 
+  logging configurations, and custom authorization. It supports integration with AWS Lambda authorizers, 
+  method-level throttling, and detailed metrics collection. The module is designed to work seamlessly with 
+  both Terraform and Terragrunt deployment patterns.
 
 # Introduction to the project
-#introduction: |-
-#  This is an introduction.
+introduction: |-
+  This Terraform module simplifies the deployment and management of AWS API Gateway REST APIs. It provides 
+  a standardized approach to API Gateway configuration with built-in support for:
+
+  - Multiple stage deployments
+  - Cache configuration and management
+  - Custom domain names and SSL certificates
+  - Method-level throttling and quota limits
+  - Integration with AWS Lambda authorizers
+  - Detailed CloudWatch logging and metrics
+  - Terragrunt-compatible deployment patterns
+
+  The module follows AWS best practices and provides a secure, scalable foundation for API deployments.
 
 # How to use this project
 usage: |-
@@ -81,10 +94,68 @@ usage: |-
   ```
 
 # Example usage
-#examples: |-
+examples: |-
+  ### Basic API Gateway with Custom Domain
+  ```hcl
+  module "api_gateway" {
+    source = "github.com/cloudopsworks/terraform-module-aws-api-gateway-apis-deploy"
+
+    aws_configuration = {
+      settings = {
+        name = "my-api"
+        domain_name = "api.example.com"
+        certificate_arn = "arn:aws:acm:region:account:certificate/xxx"
+      }
+    }
+  }
+  ```
+
+  ### Production API with Advanced Caching
+  ```hcl
+  module "api_gateway" {
+    source = "github.com/cloudopsworks/terraform-module-aws-api-gateway-apis-deploy"
+
+    aws_configuration = {
+      settings = {
+        name = "production-api"
+        stage_name = "prod"
+        caching_enabled = true
+        cache_cluster_size = "0.5"
+        cache_ttl_in_seconds = 3600
+        cache_data_encrypted = true
+      }
+    }
+  }
+  ```
 
 # How to get started quickly
-#quickstart: |-
+quickstart: |-
+  1. Add the module to your Terraform configuration:
+     ```hcl
+     module "api_gateway" {
+       source = "github.com/cloudopsworks/terraform-module-aws-api-gateway-apis-deploy"
+
+       aws_configuration = {
+         settings = {
+           name = "my-first-api"
+           stage_name = "dev"
+           metrics_enabled = true
+           logging_level = "INFO"
+         }
+       }
+     }
+     ```
+
+  2. Initialize Terraform:
+     ```bash
+     terraform init
+     ```
+
+  3. Apply the configuration:
+     ```bash
+     terraform plan
+     terraform apply
+     ```
 
 include:
   - "docs/targets.md"

@@ -1,7 +1,10 @@
 ##
-# (c) 2024 - Cloud Ops Works LLC - https://cloudops.works/
-#            On GitHub: https://github.com/cloudopsworks
-#            Distributed Under Apache v2.0 License
+# (c) 2021-2025
+#     Cloud Ops Works LLC - https://cloudops.works/
+#     Find us on:
+#       GitHub: https://github.com/cloudopsworks
+#       WebSite: https://cloudops.works
+#     Distributed Under Apache v2.0 License
 #
 
 locals {
@@ -184,7 +187,7 @@ resource "aws_lambda_permission" "staged" {
   }
   action              = "lambda:InvokeFunction"
   principal           = "apigateway.amazonaws.com"
-  source_arn          = local.is_http_api ? aws_apigatewayv2_stage.this[0].execution_arn : aws_api_gateway_stage.this[0].execution_arn
+  source_arn          = local.is_http_api ? aws_apigatewayv2_stage.staged[0].execution_arn : aws_api_gateway_stage.staged[0].execution_arn
   function_name       = data.aws_lambda_function.lambda_authorizer[each.key].arn
   statement_id_prefix = format("%s-%s", each.key, var.apigw_definition.name)
 }
