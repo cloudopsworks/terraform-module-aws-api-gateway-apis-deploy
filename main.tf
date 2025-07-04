@@ -156,7 +156,7 @@ resource "aws_lambda_permission" "staged" {
   ]...)
   action              = "lambda:InvokeFunction"
   principal           = "apigateway.amazonaws.com"
-  source_arn          = local.is_http_api ? aws_apigatewayv2_stage.this[each.value.api_name].execution_arn : aws_api_gateway_stage.this[each.value.api_name].execution_arn
+  source_arn          = local.is_http_api ? aws_apigatewayv2_stage.staged[each.value.api_name].execution_arn : aws_api_gateway_stage.staged[each.value.api_name].execution_arn
   function_name       = data.aws_lambda_function.lambda_authorizer[each.value.auth_name].arn
   statement_id_prefix = "${each.key}-"
 }
