@@ -73,7 +73,7 @@ locals {
         } if auth.authtype == "lambda"
       }
     },
-    local.is_lambda ? {
+    local.is_lambda && local.is_http_api ? {
       "x-amazon-apigateway-integrations" = {
         "lambda_integration" = {
           payloadFormatVersion = try(var.aws_configuration.lambda_options.format_version, "2.0")
