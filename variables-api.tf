@@ -36,6 +36,9 @@ variable "environment" {
 #  http_vpc_link_id: test-http-link-dev
 #  log_location: /aws/apigateway
 #  log_retention_days: 30
+#  custom_parameters:
+#    - name: url
+#      value: test-api.dev.sample.com
 #  stage_variables:
 #    - name: url
 #      value: test-api.dev.sample.com

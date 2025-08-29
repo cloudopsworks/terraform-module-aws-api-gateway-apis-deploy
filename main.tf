@@ -36,7 +36,10 @@ locals {
         server_name = var.aws_configuration.http_vpc_link.server_name
         endpoint    = data.aws_lb_listener.vpc_link[0].arn
       }
-    } : {}
+    } : {},
+    {
+      for param in try(var.aws_configuration.custom_parameters, []) : param.name => param.value
+    }
   )
   content = (fileexists("${var.absolute_path}/${var.api_files_dir}/${var.apigw_definition.file_name}.json") ?
     jsondecode(templatefile("${var.absolute_path}/${var.api_files_dir}/${var.apigw_definition.file_name}.json", local.content_parameters)) :
