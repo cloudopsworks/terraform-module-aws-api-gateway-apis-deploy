@@ -46,6 +46,7 @@ resource "aws_api_gateway_deployment" "this" {
 
 resource "aws_api_gateway_stage" "this" {
   count                 = local.deploy_stage_only == false && (!local.is_http_api) ? 1 : 0
+  description           = "Stage for ${var.apigw_definition.name} - ${var.environment}"
   deployment_id         = aws_api_gateway_deployment.this[0].id
   rest_api_id           = aws_api_gateway_rest_api.this[0].id
   stage_name            = local.deploy_stage_name
@@ -68,6 +69,7 @@ resource "aws_api_gateway_stage" "this" {
       item.name => item.value
     }
   )
+  client_certificate_id = try(var.aws_configuration.client_certificate_id, null)
 
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.logging.arn
@@ -138,7 +140,7 @@ resource "aws_api_gateway_deployment" "staged" {
 
 resource "aws_api_gateway_stage" "staged" {
   count                 = local.deploy_stage_only == true && (!local.is_http_api) ? 1 : 0
-  description           = "Stage for ${var.apigw_definition.name} - ${var.environment}"
+  description           = "Stage Only for ${var.apigw_definition.name} - ${var.environment}"
   deployment_id         = aws_api_gateway_deployment.staged[0].id
   rest_api_id           = data.aws_api_gateway_rest_api.staged[0].id
   stage_name            = local.deploy_stage_name
@@ -155,6 +157,7 @@ resource "aws_api_gateway_stage" "staged" {
       item.name => item.value
     }
   )
+  client_certificate_id = try(var.aws_configuration.client_certificate_id, null)
 
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.logging.arn
