@@ -63,10 +63,11 @@ usage: |-
   - cloud_type (string): One of lambda|beanstalk|eks|kubernetes|ecs. Drives integration hints and permissions.
   - apigw_definition (object): API metadata and spec file name. Keys: name, version, file_name, mapping, domain_name, stage_variables.
   - aws_configuration (map): Deployment options. Keys include:
-    - stage, stage_only, http_api, endpoint_type, vpc_endpoint_ids, disable_execute_api_endpoint, minimum_compression_size,
-      xray_enabled, cache_cluster_enabled, cache_cluster_size, rest_vpc_link_name, http_vpc_link, log_location,
-      log_retention_days, custom_parameters (list of {name,value}), stage_variables (list of {name,value}),
-      authorizers (lambda authorizer catalogue), cors (for HTTP APIs), settings (per‑stage/route settings).
+    - stage, stage_only, http_api, endpoint_type, client_certificate_id, vpc_endpoint_ids, disable_execute_api_endpoint, 
+      minimum_compression_size, xray_enabled, cache_cluster_enabled, cache_cluster_size, rest_vpc_link_name, http_vpc_link,
+      fail_on_warnings, log_location, log_retention_days, waf (REST WAF integration), publish_bucket (S3 backup),
+      custom_parameters (list of {name,value}), stage_variables (list of {name,value}), lambda_options (HTTP Lambda integration),
+      authorizers (lambda authorizer catalogue with scheme support), cors (for HTTP APIs), settings (comprehensive stage/route settings).
   - api_files_dir (string): Where your specs live. Default: apifiles/.
   - absolute_path (string): Base path used to resolve api_files_dir. Default: .
   - release (map): Release info; when cloud_type==lambda, function name format is "${release.name}-${environment}".
@@ -149,20 +150,25 @@ usage: |-
     - stage_only (bool, default false)
     - http_api (bool, default false) — true for HTTP APIs (v2), false for REST (v1).
     - endpoint_type (string, default "REGIONAL") — REST only.
+    - client_certificate_id (string, optional) — API Gateway client certificate ID.
     - vpc_endpoint_ids (list(string), optional) — REST when endpoint_type==PRIVATE.
     - disable_execute_api_endpoint (bool, default true for REST)
     - minimum_compression_size (number|null)
     - xray_enabled (bool)
     - cache_cluster_enabled (bool) / cache_cluster_size (string|number) — REST stages
     - rest_vpc_link_name (string) — REST VPC Link name (replaces deprecated vpc_link_name)
-    - http_vpc_link (object) — HTTP API VPC link; either { id = "vpcl-..." } or { type = "lb", lb = { name, listener_port }, server_name }
+    - http_vpc_link (object) — HTTP API VPC link; { id = "vpcl-..." } or { type = "lb|cloudmap", lb = { name, listener_port }, server_name }
+    - fail_on_warnings (bool, default true) — disable to allow warnings during deployment
     - log_location (string, default "/aws/apigateway")
     - log_retention_days (number, default 30)
+    - waf (object, REST only) — WAF web ACL association: { enabled = bool, name = string, arn = string, scope = "REGIONAL|CLOUDFRONT" }
+    - publish_bucket (object, optional) — S3 backup configuration: { enabled = bool, name = string, prefix_path = string }
     - custom_parameters (list(object({name=string,value=string}))) — injected into templatefile variables
     - stage_variables (list(object({name=string,value=string})))
-    - authorizers (list) — Lambda authorizers catalog (see example)
+    - lambda_options (object, HTTP only) — Lambda integration: { format_version, responses, pass_through_behavior, timeout_millis, content_handling }
+    - authorizers (list) — Lambda authorizers catalog with optional scheme configuration (see example)
     - cors (object) — HTTP APIs only: allow_headers, allow_methods, allow_origins, expose_headers, max_age
-    - settings (map) — per‑stage (REST) / default_route_settings (HTTP): logging_level, metrics, throttling, caching, etc.
+    - settings (map) — comprehensive stage/route settings: logging_level, metrics_enabled, data_trace_enabled, throttling_burst_limit, throttling_rate_limit, caching_enabled, cache_ttl_in_seconds, cache_data_encrypted, require_authorization_for_cache_control, unauthorized_cache_control_header_strategy
   - absolute_path (string, default ".")
   - release (map, optional): Used to resolve Lambda function and IAM role names when cloud_type==lambda.
   - extra_tags (map(string), default {}): Merged with common tags.
@@ -231,7 +237,7 @@ examples: |-
     http_api: true
   ```
 
-  3) Java API on ECS (HTTP API via VPC Link to ALB)
+  3) Java API on ECS (HTTP API via VPC Link to ALB with Lambda options)
   ```yaml
   environment: prod
   cloud_type: ecs
@@ -253,7 +259,20 @@ examples: |-
       type: lb
       server_name: internal.catalog.svc
       lb: { name: alb-catalog-prod, listener_port: 80 }
-    settings: { logging_level: ERROR, throttling_burst_limit: 500, throttling_rate_limit: 250 }
+    lambda_options:
+      format_version: "1.0"
+      pass_through_behavior: when_no_match
+      timeout_millis: 30000
+      content_handling: CONVERT_TO_TEXT
+    settings: 
+      logging_level: ERROR
+      metrics_enabled: true
+      throttling_burst_limit: 500
+      throttling_rate_limit: 250
+    publish_bucket:
+      enabled: true
+      name: catalog-apigw-backup-prod
+      prefix_path: catalog
   ```
   # In your OpenAPI for HTTP API, use the stage variable for VPC Link connectionId:
   # x-amazon-apigateway-integration:
@@ -287,7 +306,7 @@ examples: |-
       lb: { name: alb-go-prod, listener_port: 80 }
   ```
 
-  5) .NET API (Lambda, REST API with caching)
+  5) .NET API (Lambda, REST API with caching and WAF protection)
   ```yaml
   environment: prod
   cloud_type: lambda
@@ -308,16 +327,37 @@ examples: |-
     stage: prod
     http_api: false
     endpoint_type: REGIONAL
+    client_certificate_id: cert-12345abcdef
     cache_cluster_enabled: true
     cache_cluster_size: 0.5
+    waf:
+      enabled: true
+      name: dotnet-api-waf-prod
+      scope: REGIONAL
     settings:
       logging_level: ERROR
       metrics_enabled: true
+      data_trace_enabled: false
       caching_enabled: true
       cache_ttl_in_seconds: 300
       cache_data_encrypted: true
       require_authorization_for_cache_control: true
       unauthorized_cache_control_header_strategy: FAIL_WITH_403
+      throttling_burst_limit: 1000
+      throttling_rate_limit: 500
+    authorizers:
+      - name: Enhanced-Auth
+        scheme:
+          name: Authorization
+          in: header
+          type: apiKey
+          authtype: custom
+        authtype: lambda
+        result_ttl_seconds: 300
+        identity_source: method.request.header.Authorization
+        lambda:
+          function: dotnet-auth-prod
+          exec_role: dotnet-auth-prod-exec-role
   ```
 
   6) Rust API (Lambda, minimal HTTP API)

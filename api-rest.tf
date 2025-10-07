@@ -206,3 +206,14 @@ resource "aws_api_gateway_method_settings" "staged" {
   }
 }
 
+data "aws_wafv2_web_acl" "waf" {
+  count = try(var.aws_configuration.waf.enabled, false) && try(var.aws_configuration.waf.arn, "") != "" ? 1 : 0
+  name  = var.aws_configuration.waf.name
+  scope = try(var.aws_configuration.waf.scope, "REGIONAL")
+}
+
+resource "aws_wafv2_web_acl_association" "waf" {
+  count        = try(var.aws_configuration.waf.enabled, false) && length(data.aws_wafv2_web_acl.waf) > 0 && !local.is_http_api ? 1 : 0
+  web_acl_arn  = try(var.aws_configuration.waf.arn, "") != "" ? data.aws_wafv2_web_acl.waf[0].arn : var.aws_configuration.waf.arn
+  resource_arn = local.deploy_stage_only == false ? aws_api_gateway_stage.this[0].arn : aws_api_gateway_stage.staged[0].arn
+}
