@@ -105,7 +105,7 @@ resource "aws_api_gateway_method_settings" "this" {
   stage_name  = aws_api_gateway_stage.this[0].stage_name
   method_path = "*/*"
   settings {
-    logging_level                              = try(var.aws_configuration.settings.logging_level, null)
+    logging_level                              = try(var.aws_configuration.settings.logging_level, "ERROR")
     metrics_enabled                            = try(var.aws_configuration.settings.metrics_enabled, null)
     data_trace_enabled                         = try(var.aws_configuration.settings.data_trace_enabled, null)
     throttling_burst_limit                     = try(var.aws_configuration.settings.throttling_burst_limit, null)
