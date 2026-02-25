@@ -99,8 +99,9 @@ resource "aws_api_gateway_stage" "this" {
   }
 }
 
+# Logging is enabled at stage level, so we need to set method settings for the stage if deploy_stage_only is true
 resource "aws_api_gateway_method_settings" "this" {
-  count       = local.deploy_stage_only == false && length(try(var.aws_configuration.settings, {})) > 0 && (!local.is_http_api) ? 1 : 0
+  count       = local.deploy_stage_only == false && (!local.is_http_api) ? 1 : 0
   rest_api_id = aws_api_gateway_rest_api.this[0].id
   stage_name  = aws_api_gateway_stage.this[0].stage_name
   method_path = "*/*"
@@ -187,8 +188,9 @@ resource "aws_api_gateway_stage" "staged" {
   }
 }
 
+# Logs are only applied at stage level, so if we are deploying only stage, we need to apply method settings to it as well
 resource "aws_api_gateway_method_settings" "staged" {
-  count       = local.deploy_stage_only == true && length(try(var.aws_configuration.settings, {})) > 0 && (!local.is_http_api) ? 1 : 0
+  count       = local.deploy_stage_only == true && (!local.is_http_api) ? 1 : 0
   rest_api_id = aws_api_gateway_rest_api.this[0].id
   stage_name  = aws_api_gateway_stage.this[0].stage_name
   method_path = "*/*"
