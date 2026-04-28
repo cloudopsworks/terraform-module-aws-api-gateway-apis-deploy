@@ -10,8 +10,8 @@
 
 | Name | Version |
 |------|---------|
-| <a name="provider_aws"></a> [aws](#provider\_aws) | 6.15.0 |
-| <a name="provider_local"></a> [local](#provider\_local) | 2.5.3 |
+| <a name="provider_aws"></a> [aws](#provider\_aws) | ~> 6.4 |
+| <a name="provider_local"></a> [local](#provider\_local) | ~> 2.5 |
 
 ## Modules
 
