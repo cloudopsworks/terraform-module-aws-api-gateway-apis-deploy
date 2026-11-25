@@ -1,0 +1,15 @@
+openapi: 3.0.1
+info:
+  title: orders
+  description: Orders test API
+  version: v1
+paths:
+  /health:
+    get:
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: ${lambdaEndpoint}
+        credentials: ${lambdaFunctionExecRoleArn}
+components:
+  schemas: {}
