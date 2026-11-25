@@ -226,7 +226,6 @@ run "http_full_deploy_vpc_link" {
     aws_configuration = {
       stage       = "dev"
       http_api    = true
-      authorizers = []
       http_vpc_link = {
         id          = "vpcl-0123456789"
         type        = "lb"
@@ -276,7 +275,6 @@ run "http_stage_only" {
       stage       = "qa"
       stage_only  = true
       http_api    = true
-      authorizers = []
       custom_parameters = [
         { name = "elb", value = { endpoint = "http://catalog.internal" } },
       ]

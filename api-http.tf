@@ -109,7 +109,7 @@ resource "aws_apigatewayv2_stage" "this" {
       throttling_rate_limit    = try(var.aws_configuration.settings.throttling_rate_limit, null)
       data_trace_enabled       = try(var.aws_configuration.settings.data_trace_enabled, null)
       detailed_metrics_enabled = try(var.aws_configuration.settings.detailed_metrics_enabled, null)
-      logging_level            = try(var.aws_configuration.settings.logging_level, "ERROR")
+      logging_level            = try(var.aws_configuration.settings.logging_level, null)
     }
   }
   tags = local.all_tags

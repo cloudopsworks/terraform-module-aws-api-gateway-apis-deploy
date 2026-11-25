@@ -13,5 +13,3 @@ paths:
         connectionId: $${stageVariables.vpc_link}
         payloadFormatVersion: "1.0"
         uri: ${elb.endpoint}
-components:
-  schemas: {}
