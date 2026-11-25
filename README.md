@@ -3,8 +3,7 @@
   ** 
   ** This file was automatically generated. 
   ** 1) Make all changes to `README.yaml` 
-  ** 2) Run `make init` (you only need to do this once)
-  ** 3) Run`make readme` to rebuild this file. 
+  ** 2) Run `tronador readme build` to rebuild this file.
   -->
 [![README Header][readme_header_img]][readme_header_link]
 
@@ -12,21 +11,31 @@
 
 # Terraform AWS API Gateway APIs Deploy Module
 
+ [![Latest Release](https://img.shields.io/github/release/cloudopsworks/terraform-module-aws-api-gateway-apis-deploy.svg?style=for-the-badge)](https://github.com/cloudopsworks/terraform-module-aws-api-gateway-apis-deploy/releases/latest) [![Last Updated](https://img.shields.io/github/last-commit/cloudopsworks/terraform-module-aws-api-gateway-apis-deploy.svg?style=for-the-badge)](https://github.com/cloudopsworks/terraform-module-aws-api-gateway-apis-deploy/commits)
 
 
+Terraform module that deploys AWS API Gateway **REST (v1)** and **HTTP (v2)** APIs from an OpenAPI/Swagger
+definition kept in your application repository. The spec (YAML or JSON) is rendered with `templatefile()`,
+enriched with Lambda authorizers and integrations, and published as a versioned stage with:
 
-Production‑grade Terraform module to deploy AWS API Gateway REST and HTTP APIs from OpenAPI/Swagger
-definitions stored in your source code repository. The module renders your spec (YAML/JSON) with
-environment variables and infrastructure parameters, then provisions API Gateway resources with:
-- Stage deployments (full API or stage‑only updates)
-- CloudWatch access logging and log retention
-- Method/route settings (throttling, metrics, tracing, caching for REST)
-- Lambda authorizers and Lambda backends (including permissions wiring)
-- Custom domain mappings and base path mappings
-- VPC Links for REST (V1) and HTTP (V2) APIs, including ELB listener support for HTTP APIs
-- CORS configuration for HTTP APIs
-It is designed for both Terraform and Terragrunt workflows and for direct consumption from CI pipelines
-in application repositories (e.g., .github/vars/apigw).
+| Capability | REST API | HTTP API |
+|---|:---:|:---:|
+| Full API deployment or stage-only rollout onto an existing API | ✅ | ✅ |
+| Redeploy on spec change (SHA1 fingerprint trigger) | ✅ | ✅ |
+| CloudWatch access logging with retention | ✅ | ✅ |
+| Lambda backend lookup, template variables and invoke permission | ✅ | ✅ |
+| Lambda authorizers injected as OpenAPI `securitySchemes` | ✅ | ✅ |
+| Custom domain API mapping | ✅ | ✅ |
+| VPC Link (by name for REST, by ID / ALB listener for HTTP) | ✅ | ✅ |
+| Throttling stage settings | ✅ | ✅ |
+| Execution logging level, metrics | ✅ | — |
+| Caching, X-Ray, client certificate, private endpoints | ✅ | — |
+| WAFv2 web ACL association | ✅ | — |
+| CORS configuration | — | ✅ |
+| Spec backup to S3 | ✅ | ✅ |
+
+It works with Terragrunt (scaffolded deployments) and as the API Gateway step of the Cloud Ops Works
+application templates' CI pipelines (`.github/vars/apigw`).
 
 
 ---
@@ -56,30 +65,49 @@ We have [*lots of terraform modules*][terraform_modules] that are Open Source an
 
 ## Introduction
 
-This module turns an OpenAPI/Swagger definition in your repo into a running AWS API Gateway REST (v1)
-or HTTP (v2) API. It is purpose‑built to be consumed from application repositories and CI pipelines,
-where specs and environment values live alongside your source code.
+The module turns `<absolute_path>/<api_files_dir>/<file_name>.(json|yaml)` into a running API Gateway API.
+It is built to sit next to application code, where specs and environment values evolve with the service.
 
-Key capabilities:
-- Deploy from YAML or JSON specs, using template variables resolved at apply time
-- Choose REST or HTTP API via a simple flag
-- Full API deployment or stage‑only updates for fast, safe rollouts
-- First‑class Lambda support (function and authorizers), including IAM permissions
-- VPC Links (REST and HTTP), with ALB listener support for HTTP APIs
-- CloudWatch access logging with configurable retention
-- Stage/route settings for throttling, metrics, tracing, and caching (REST)
-- Custom domain and base path mapping
+### How a deployment works
 
-The design aligns with the Cloud Ops Works application templates and can be paired with:
-- cloudopsworks/python-app-template
-- cloudopsworks/java-app-template
-- cloudopsworks/node-app-template
-- cloudopsworks/go-app-template
-- cloudopsworks/dotnet-app-template
-- cloudopsworks/rust-app-template
+1. **Render** – the spec is read with `templatefile()`. Template variables are filled from Lambda lookups,
+   authorizers, the HTTP VPC Link load balancer and your `custom_parameters` (see [OpenAPI template variables](#openapi-template-variables)).
+2. **Enrich** – Lambda authorizers are merged into `components.securitySchemes`; for Lambda-backed HTTP APIs a
+   shared `x-amazon-apigateway-integrations.lambda_integration` is added.
+3. **Deploy** – depending on `aws_configuration.http_api` and `aws_configuration.stage_only`:
 
-See the Python template variables reference for a concrete layout of repo‑level configuration:
-https://github.com/cloudopsworks/python-app-template/tree/master/.github/vars/apigw
+   | `http_api` | `stage_only` | Resources created |
+   |---|---|---|
+   | `false` | `false` | REST API, deployment, stage, method settings, optional domain mapping and WAF |
+   | `false` | `true` | Deployment, stage and method settings on the existing REST API named `apigw_definition.name` |
+   | `true` | `false` | HTTP API (with CORS), deployment, stage, optional domain mapping |
+   | `true` | `true` | Deployment and stage on the existing HTTP API named `apigw_definition.name` |
+
+   Stage-only stages are leaner than full ones: they do not apply `xray_enabled`, `cache_cluster_size`,
+   the automatic `lambdaEndpoint` stage variable, or HTTP route `settings`.
+
+4. **Observe** – access logs go to `<log_location>/<stage>/<name>/<version>`; every spec change produces a new
+   deployment through its SHA1 fingerprint.
+
+### Prerequisites
+
+| Resource | Needed when | Provided by |
+|---|---|---|
+| Backend Lambda `<release.name>-<environment>` and role `<release.name>-<environment>-exec-role` | `cloud_type = "lambda"` | Application deployment |
+| Authorizer Lambda and its invoke role | `authorizers` with `authtype: lambda` | Application or shared deployment |
+| API Gateway custom domain | `apigw_definition.domain_name` is set | [terraform-module-aws-api-gateway-setup](https://github.com/cloudopsworks/terraform-module-aws-api-gateway-setup) |
+| REST / HTTP VPC Link, ALB | `rest_vpc_link_name` / `http_vpc_link` | [terraform-module-aws-api-gateway-setup](https://github.com/cloudopsworks/terraform-module-aws-api-gateway-setup) |
+| WAFv2 web ACL | `waf.enabled` | Security baseline |
+| S3 bucket | `publish_bucket.enabled` | Shared storage |
+| Existing API | `stage_only = true` | A previous full deployment |
+
+The module pairs with the Cloud Ops Works application templates
+([python](https://github.com/cloudopsworks/python-app-template/tree/master/.github/vars/apigw),
+[java](https://github.com/cloudopsworks/java-app-template),
+[node](https://github.com/cloudopsworks/node-app-template),
+[go](https://github.com/cloudopsworks/go-app-template),
+[dotnet](https://github.com/cloudopsworks/dotnet-app-template),
+[rust](https://github.com/cloudopsworks/rust-app-template)).
 
 ## Usage
 
@@ -88,53 +116,282 @@ https://github.com/cloudopsworks/python-app-template/tree/master/.github/vars/ap
 Instead pin to the release tag (e.g. `?ref=vX.Y.Z`) of one of our [latest releases](https://github.com/cloudopsworks/terraform-module-aws-api-gateway-apis-deploy/releases).
 
 
-This module is intended to be called from an application repository (alongside your API spec under apifiles/).
-The OpenAPI/Swagger file can be YAML or JSON and can include template variables such as ${lambdaEndpoint},
-${authorizer_uri}, ${elb.endpoint}, etc. The module renders the file using templatefile() and deploys it.
+### Terragrunt scaffolding workflow
 
-Inputs summary (see variables-api.tf for full details):
-- environment (string): Target environment (e.g., dev, qa, prod).
-- org (object): Organization metadata used for naming and tagging.
-- cloud_type (string): One of lambda|beanstalk|eks|kubernetes|ecs. Drives integration hints and permissions.
-- apigw_definition (object): API metadata and spec file name. Keys: name, version, file_name, mapping, domain_name, stage_variables.
-- aws_configuration (map): Deployment options. Keys include:
-  - stage, stage_only, http_api, endpoint_type, client_certificate_id, vpc_endpoint_ids, disable_execute_api_endpoint, 
-    minimum_compression_size, xray_enabled, cache_cluster_enabled, cache_cluster_size, rest_vpc_link_name, http_vpc_link,
-    fail_on_warnings, log_location, log_retention_days, waf (REST WAF integration), publish_bucket (S3 backup),
-    custom_parameters (list of {name,value}), stage_variables (list of {name,value}), lambda_options (HTTP Lambda integration),
-    authorizers (lambda authorizer catalogue with scheme support), cors (for HTTP APIs), settings (comprehensive stage/route settings).
-- api_files_dir (string): Where your specs live. Default: apifiles/.
-- absolute_path (string): Base path used to resolve api_files_dir. Default: .
-- release (map): Release info; when cloud_type==lambda, function name format is "${release.name}-${environment}".
-- extra_tags (map): Additional tags to attach to all resources.
+```sh
+# 1. Create and enter the target deployment directory
+mkdir -p <environment>/<region>/<spoke>/apis/orders
+cd <environment>/<region>/<spoke>/apis/orders
 
-Example OpenAPI fragment (YAML) using variables provided by this module:
+# 2. Scaffold the module (do NOT use --working-dir)
+terragrunt scaffold github.com/cloudopsworks/terraform-module-aws-api-gateway-apis-deploy
+
+# 3. Add the OpenAPI spec next to the generated files
+mkdir -p apifiles && cp /path/to/orders.yaml apifiles/orders.yaml
+
+# 4. Edit inputs.yaml with deployment-specific values
+#    (all keys and comments are pre-populated from .boilerplate/inputs.yaml)
+vi inputs.yaml
+
+# 5. Apply
+terragrunt apply
+```
+
+Scaffold writes `terragrunt.hcl`, `inputs.yaml` and `local-tags.json` into the current directory.
+`org`, `spoke_def`, `is_hub` and `extra_tags` come from the Terragrunt hierarchy, so they are not part of `inputs.yaml`.
+
+### Generated `inputs.yaml`
+
 ```yaml
-x-amazon-apigateway-importexport-version: '1.0'
+# Module configuration
+# AWS API Gateway APIs deploy inputs
+# org, spoke_def, is_hub and extra_tags are supplied by the Terragrunt hierarchy (env-inputs.yaml, spoke-inputs.yaml and *-tags.json).
+
+environment: "dev"                       # (Required) Deployment environment. Used in descriptions and in the Lambda lookup names "<release.name>-<environment>". Example: "dev"
+cloud_type: "lambda"                     # (Required) Backend runtime. Valid values: "lambda", "beanstalk", "eks", "kubernetes", "ecs". "lambda" enables the backend Lambda lookup, permission and template variables.
+
+apigw_definition:                        # (Required) API identity and source file.
+  name: "orders"                         # (Required) API name. In stage_only mode, the existing API looked up by this name.
+  version: "v1"                          # (Required) API version; part of descriptions and the log group name.
+  file_name: "orders"                    # (Required) Spec file name without extension, under <absolute_path>/<api_files_dir>. <file_name>.json is used if present, else <file_name>.yaml.
+  #domain_name: "api.dev.example.com"    # (Optional) Existing API Gateway custom domain to map the stage to. Default: "" (no mapping)
+  #mapping: "orders"                     # (Required when domain_name is set) Base path (API mapping key) on the custom domain.
+  #stage_variables:                      # (Optional) Stage variables for this API. Default: []
+  #  - name: "api_variable"              # (Required) Stage variable name.
+  #    value: "api_value"                # (Required) Stage variable value.
+
+aws_configuration:                       # (Required) Deployment options for the API Gateway.
+  stage: "dev"                           # (Required) Stage name to deploy.
+  #stage_only: false                     # (Optional) true = only deploy a new stage on an API that already exists (looked up by apigw_definition.name). Stage-only stages skip xray_enabled, cache_cluster_size, the "lambdaEndpoint" stage variable and HTTP settings. Default: false
+  #http_api: false                       # (Optional) true = HTTP API (API Gateway v2), false = REST API (API Gateway v1). Default: false
+  #endpoint_type: "REGIONAL"             # (Optional) REST only. Valid values: "REGIONAL", "EDGE", "PRIVATE". Default: "REGIONAL"
+  #vpc_endpoint_ids:                     # (Optional) REST only, used with endpoint_type = "PRIVATE". Default: null
+  #  - "vpce-1234567890abcdef0"
+  #put_rest_api_mode: "overwrite"        # (Optional) REST only, honored for PRIVATE endpoints. Valid values: "overwrite", "merge". Default: "overwrite"
+  #disable_execute_api_endpoint: true    # (Optional) REST only. Disable the default execute-api endpoint. Default: true
+  #enable_execute_api_endpoint: false    # (Optional) HTTP only. Enable the default execute-api endpoint. Default: false
+  #minimum_compression_size: null        # (Optional) REST only. Payload compression threshold in bytes, -1 to 10485760. Default: null (disabled)
+  #client_certificate_id: ""             # (Optional) REST only. API Gateway client certificate ID for backend mTLS. Default: null
+  #xray_enabled: false                   # (Optional) REST only. Enable X-Ray tracing on the stage. Default: null (provider default)
+  #cache_cluster_enabled: false          # (Optional) REST only. Enable the stage cache cluster. Default: null (false)
+  #cache_cluster_size: "0.5"             # (Optional) REST only. Cache size in GB. Valid values: "0.5", "1.6", "6.1", "13.5", "28.4", "58.2", "118", "237". Default: null
+  #rest_vpc_link_name: ""                # (Optional) REST only. Existing VPC Link name; its ID is exposed as stage variable "vpc_link". Default: ""
+  #vpc_link_name: ""                     # (Optional) DEPRECATED, use rest_vpc_link_name. Takes precedence when both are set.
+  #http_vpc_link:                        # (Optional) HTTP only. VPC Link integration settings. Default: {}
+  #  id: "abcde1"                        # (Optional) Existing HTTP API VPC Link ID; exposed as stage variable "vpc_link".
+  #  type: "lb"                          # (Optional) Valid values: "lb", "cloudmap". Only "lb" triggers module-side lookups: it resolves the listener ARN into the elb.endpoint template variable.
+  #  server_name: "svc.internal"         # (Required when type = "lb") TLS server name, exposed as the elb.server_name template variable.
+  #  lb:                                 # (Required when type = "lb") Load balancer lookup.
+  #    name: "alb-svc-dev"               # (Required) Load balancer name.
+  #    listener_port: 80                 # (Required) Listener port.
+  #fail_on_warnings: true                # (Optional) Fail the import when the OpenAPI definition raises warnings. Default: true
+  #log_location: "/aws/apigateway"       # (Optional) Access-log group prefix; the group is "<log_location>/<stage>/<name>/<version>". Default: "/aws/apigateway"
+  #log_retention_days: 30                # (Optional) Access-log retention in days. Default: 30
+  #cors:                                 # (Optional) HTTP only. CORS configuration. Default: allow all origins with GET, POST, PUT, DELETE, OPTIONS
+  #  allow_credentials: false            # (Optional) Default: false
+  #  allow_headers: []                   # (Optional) Default: []
+  #  allow_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"] # (Optional) Default as shown
+  #  allow_origins: ["*"]                # (Optional) Default: ["*"]
+  #  expose_headers: []                  # (Optional) Default: []
+  #  max_age: 300                        # (Optional) Preflight cache in seconds. Default: null
+  #waf:                                  # (Optional) REST only. WAFv2 web ACL association. Default: disabled
+  #  enabled: false                      # (Optional) Associate a web ACL with the stage. Default: false
+  #  arn: ""                             # (Optional) Web ACL ARN. When set, no lookup is performed.
+  #  name: ""                            # (Required when arn is empty) Web ACL name to look up.
+  #  scope: "REGIONAL"                   # (Optional) Lookup scope. API Gateway stages accept "REGIONAL" web ACLs only. Default: "REGIONAL"
+  #settings:                             # (Optional) Stage settings. REST: applied to all methods. HTTP: default route settings (full deployments only). Default: {}
+  #  logging_level: "ERROR"              # (Optional) Valid values: "OFF", "ERROR", "INFO". REST default: "ERROR". HTTP: not sent unless set (AWS supports execution logs on REST and WebSocket APIs only)
+  #  metrics_enabled: false              # (Optional) REST only. CloudWatch metrics. Default: null
+  #  detailed_metrics_enabled: false     # (Optional) HTTP only. Detailed route metrics. Default: null
+  #  data_trace_enabled: false           # (Optional) Full request/response logging. Default: null
+  #  throttling_burst_limit: 5000        # (Optional) Burst limit, -1 to disable. Default: null (account limit)
+  #  throttling_rate_limit: 10000        # (Optional) Steady-state requests per second, -1 to disable. Default: null (account limit)
+  #  caching_enabled: false              # (Optional) REST only. Requires cache_cluster_enabled. Default: null
+  #  cache_ttl_in_seconds: 300           # (Optional) REST only. 0 to 3600. Default: null (300)
+  #  cache_data_encrypted: false         # (Optional) REST only. Default: null
+  #  require_authorization_for_cache_control: true # (Optional) REST only. Default: null
+  #  unauthorized_cache_control_header_strategy: "SUCCEED_WITH_RESPONSE_HEADER" # (Optional) REST only. Valid values: "FAIL_WITH_403", "SUCCEED_WITH_RESPONSE_HEADER", "SUCCEED_WITHOUT_RESPONSE_HEADER". Default: null
+  #publish_bucket:                       # (Optional) Back up the templated spec (before authorizer/integration injection) as YAML to an existing S3 bucket. Default: disabled
+  #  enabled: false                      # (Optional) Default: false
+  #  name: "apigw-backup"                # (Required when enabled) Bucket name.
+  #  prefix_path: "apis"                 # (Optional) Key prefix; the object is "<prefix_path>/<apigw_definition.name>.yaml". Set it: an empty prefix yields a key with a leading "/". Default: ""
+  #custom_parameters:                    # (Optional) Extra template variables for the OpenAPI file, referenced by name. Default: []
+  #  - name: "backend_url"               # (Required) Variable name; must be a valid identifier.
+  #    value: "https://svc.internal"     # (Required) Value; strings, numbers, lists and maps are accepted.
+  #stage_variables:                      # (Optional) Stage variables applied after apigw_definition.stage_variables (same names override). Default: []
+  #  - name: "backend_host"              # (Required) Stage variable name.
+  #    value: "svc.internal"             # (Required) Stage variable value.
+  #lambda_options:                       # (Optional) HTTP + cloud_type "lambda" only. Shared "lambda_integration" injected into the spec. Default: {}
+  #  format_version: "2.0"               # (Optional) Payload format version. Valid values: "1.0", "2.0". Default: "2.0"
+  #  responses: {}                       # (Optional) Integration responses map. Default: {}
+  #  pass_through_behavior: "when_no_match" # (Optional) Valid values: "when_no_match", "when_no_templates", "never". Default: "when_no_match"
+  #  timeout_millis: 30000               # (Optional) Integration timeout in milliseconds. Default: 30000
+  #  content_handling: "CONVERT_TO_TEXT" # (Optional) Valid values: "CONVERT_TO_TEXT", "CONVERT_TO_BINARY". Default: "CONVERT_TO_TEXT"
+  #authorizers:                          # (Optional) Authorizer catalogue; entries with authtype "lambda" are injected as securitySchemes. Default: []
+  #  - name: "Lambda-Auth"               # (Required) Security scheme name, referenced from the spec "security" blocks.
+  #    authtype: "lambda"                # (Required) Only "lambda" is processed.
+  #    type: "request"                   # (Optional) Valid values: "request", "token". Default: "request"
+  #    identity_source: "$request.header.Authorization" # (Optional) HTTP: "$request.header.X"; REST: "method.request.header.X". Default: "$request.header.Authorization"
+  #    result_ttl_seconds: 0             # (Optional) Authorizer cache TTL, 0 to 3600. Default: 0
+  #    payload_format_version: "2.0"     # (Optional) HTTP only. Valid values: "1.0", "2.0". Default: "2.0"
+  #    enable_simple_responses: false    # (Optional) HTTP only, payload 2.0. Default: false
+  #    scheme:                           # (Optional) OpenAPI security scheme fields.
+  #      name: "Authorization"           # (Optional) Header/parameter name. Default: "Authorization"
+  #      in: "header"                    # (Optional) Valid values: "header", "query". Default: "header"
+  #      type: "apiKey"                  # (Optional) Default: "apiKey"
+  #      authtype: "custom"              # (Optional) x-amazon-apigateway-authtype. Default: "custom"
+  #    lambda:                           # (Required) Existing authorizer Lambda.
+  #      function: "auth-dev"            # (Required) Lambda function name.
+  #      exec_role: "auth-dev-exec-role" # (Required) IAM role API Gateway assumes to invoke the authorizer.
+
+#release:                                # (Optional) Release information, usually sourced from release.yaml. Default: {}
+#  name: "orders"                        # (Required when cloud_type = "lambda") Lambda is "<name>-<environment>", its role "<name>-<environment>-exec-role". Default: "default"
+#  source:                               # (Optional) Informational source metadata.
+#    name: "orders"                      # (Optional) Source artifact name.
+#    version: "1.2.3"                    # (Optional) Source artifact version.
+
+#api_files_dir: "apifiles/"              # (Optional) Directory, relative to absolute_path, holding the OpenAPI files. Default: "apifiles/"
+#absolute_path: "/path/to/deployment"    # (Optional) Base directory for api_files_dir. The scaffolded terragrunt.hcl defaults it to the deployment directory. Default: deployment directory
+#debug: false                            # (Optional) Write the rendered spec to <api_files_dir>/<file_name>_final.json and _final.yaml. Default: false
+```
+
+### Generated `terragrunt.hcl`
+
+`inputs.yaml` is loaded as `local.local_vars`. Required inputs are mapped directly, optional ones fall back to the
+module default, and `absolute_path` defaults to the deployment directory so the module finds `apifiles/`
+even though Terragrunt runs it from `.terragrunt-cache`.
+
+```hcl
+locals {
+  local_vars  = yamldecode(file("./inputs.yaml"))
+  spoke_vars  = yamldecode(file(find_in_parent_folders("spoke-inputs.yaml")))
+  region_vars = yamldecode(file(find_in_parent_folders("region-inputs.yaml")))
+  env_vars    = yamldecode(file(find_in_parent_folders("env-inputs.yaml")))
+  global_vars = yamldecode(file(find_in_parent_folders("global-inputs.yaml")))
+
+  local_tags  = jsondecode(file("./local-tags.json"))
+  spoke_tags  = jsondecode(file(find_in_parent_folders("spoke-tags.json")))
+  region_tags = jsondecode(file(find_in_parent_folders("region-tags.json")))
+  env_tags    = jsondecode(file(find_in_parent_folders("env-tags.json")))
+  global_tags = jsondecode(file(find_in_parent_folders("global-tags.json")))
+
+  tags = merge(
+    local.global_tags,
+    local.env_tags,
+    local.region_tags,
+    local.spoke_tags,
+    local.local_tags
+  )
+}
+
+include "root" {
+  path = find_in_parent_folders("root.hcl")
+}
+
+terraform {
+  source = "git::https://github.com/cloudopsworks/terraform-module-aws-api-gateway-apis-deploy.git?ref=v6.1.0"
+}
+
+inputs = {
+  is_hub            = false
+  org               = local.env_vars.org
+  spoke_def         = local.spoke_vars.spoke
+  environment       = local.local_vars.environment
+  cloud_type        = local.local_vars.cloud_type
+  api_files_dir     = try(local.local_vars.api_files_dir, "apifiles/")
+  aws_configuration = try(local.local_vars.aws_configuration, {})
+  apigw_definition  = try(local.local_vars.apigw_definition, {})
+  absolute_path     = try(local.local_vars.absolute_path, get_terragrunt_dir())
+  release           = try(local.local_vars.release, {})
+  debug             = try(local.local_vars.debug, false)
+  extra_tags        = local.tags
+}
+```
+
+### OpenAPI template variables
+
+The spec is rendered with `templatefile()`. These variables are available:
+
+| Variable | Available when | Value |
+|---|---|---|
+| `${lambdaEndpoint}`, `${lambdaFunctionEndpoint}` | `cloud_type = "lambda"` | Backend Lambda invoke ARN |
+| `${lambdaFunctionName}` | `cloud_type = "lambda"` | Backend Lambda function name |
+| `${lambdaFunctionExecRoleArn}`, `${lambdaFunctionRoleArn}` | `cloud_type = "lambda"` | Backend Lambda execution role ARN |
+| `${<authorizer>.authorizer_uri}` | Lambda authorizer `<authorizer>` declared | Authorizer invoke ARN |
+| `${<authorizer>.authorizer_credentials}` | Lambda authorizer `<authorizer>` declared | Authorizer role ARN |
+| `${elb.endpoint}`, `${elb.server_name}` | `http_vpc_link.type = "lb"` | ALB listener ARN and TLS server name |
+| `${<name>}` | `custom_parameters` entry `<name>` | Its `value` |
+
+Stage variables `vpc_link` (when a VPC Link is configured) and, on full deployments, `lambdaEndpoint`
+(when `cloud_type = "lambda"`) are set automatically, followed by `apigw_definition.stage_variables` and then `aws_configuration.stage_variables`.
+
+> **Escape API Gateway expressions.** Anything that API Gateway itself must resolve, such as
+> `${stageVariables.vpc_link}`, must be written as `$${stageVariables.vpc_link}` in the spec,
+> otherwise `templatefile()` fails with an unknown-variable error.
+
+```yaml
+# apifiles/orders.yaml
+openapi: 3.0.1
 info:
   title: orders
-  version: 'v1'
+  version: v1
 paths:
-  /health:
+  /orders:
     get:
+      security:
+        - Lambda-Auth: []          # scheme injected from aws_configuration.authorizers[name = "Lambda-Auth"]
       x-amazon-apigateway-integration:
         type: aws_proxy
         httpMethod: POST
         uri: ${lambdaEndpoint}
         credentials: ${lambdaFunctionExecRoleArn}
+        payloadFormatVersion: "2.0"  # HTTP APIs only; omit for REST APIs
+components:
+  schemas: {}
 ```
 
-## Repository YAML configuration (.github/vars/apigw/<env>.yaml)
-Below is an example aligned with the python-app-template. Adjust values to your needs.
+### Inputs at a glance
+
+| Input | Required | Default | Purpose |
+|---|:---:|---|---|
+| `environment` | ✅ | — | Environment name, used in descriptions and Lambda lookups |
+| `cloud_type` | ✅ | — | `lambda`, `beanstalk`, `eks`, `kubernetes` or `ecs` |
+| `apigw_definition` | ✅ | `{}` | API name, version, spec file, domain mapping, stage variables |
+| `aws_configuration` | ✅ | `{}` | Stage and all deployment options (`stage` is mandatory) |
+| `release` | — | `{}` | `release.name` resolves the backend Lambda |
+| `api_files_dir` | — | `"apifiles/"` | Spec directory under `absolute_path` |
+| `absolute_path` | — | `"."` | Base directory; Terragrunt scaffold sets the deployment directory |
+| `debug` | — | `false` | Write the rendered spec as `<file_name>_final.json/.yaml` |
+| `org`, `spoke_def`, `is_hub`, `extra_tags` | `org` ✅ | — | Supplied by the Terragrunt hierarchy |
+
+Every key of `apigw_definition`, `aws_configuration` and `release` is documented inline in `variables-api.tf`
+and in the generated `inputs.yaml` above.
+
+### Outputs
+
+| Output | Description |
+|---|---|
+| `api_type` | `HTTP` or `REST` |
+| `api_id` | ID of the API that received the deployment |
+| `api_endpoint` | Default execute-api endpoint of a newly created HTTP API (null otherwise) |
+| `stage_name`, `stage_arn` | Deployed stage name and ARN |
+| `stage_invoke_url` | Stage invoke URL on the execute-api endpoint |
+| `stage_execution_arn` | Stage execution ARN, for Lambda permission `source_arn` |
+| `deployment_id` | Deployment attached to the stage |
+| `api_definition_fingerprint` | SHA1 of the source spec |
+| `custom_domain_url` | `https://<domain_name>/<mapping>` when a domain is configured |
+| `cloudwatch_log_group_name`, `cloudwatch_log_group_arn` | Access-log group |
+| `published_spec_s3_uri` | S3 URI of the spec backup when `publish_bucket` is enabled |
+
+### Application template CI (`.github/vars/apigw`)
+
+The Cloud Ops Works application templates call this module from their pipelines with one YAML file per
+environment. The keys are the same module inputs:
 
 ```yaml
+# .github/vars/apigw/dev.yaml
 environment: dev
 cloud_type: lambda
-org:
-  organization_name: acme
-  organization_unit: payments
-  environment_type: nonprod
-  environment_name: dev
 release:
   name: orders
 apigw_definition:
@@ -143,81 +400,19 @@ apigw_definition:
   file_name: orders
   domain_name: api.dev.example.com
   mapping: orders
-  stage_variables:
-    - name: STAGE
-      value: dev
 aws_configuration:
   stage: dev
   http_api: true
-  cors:
-    allow_methods: [GET, POST, OPTIONS]
-    allow_origins: ["*"]
-  settings:
-    logging_level: INFO
-    throttling_burst_limit: 200
-    throttling_rate_limit: 100
-  authorizers:
-    - name: Lambda-Auth
-      authtype: lambda
-      type: request
-      identity_source: "$request.header.Authorization"
-      result_ttl_seconds: 10
-      lambda:
-        function: auth-dev
-        exec_role: auth-dev-lambda-exec-role
 ```
-
-
-## Inputs reference
-- api_files_dir (string, default "apifiles/"): Directory containing your API spec files.
-- environment (string, required): Environment name used in resource naming and stage.
-- org (object, required): { organization_name, organization_unit, environment_type, environment_name }.
-- cloud_type (string, required): One of lambda|beanstalk|eks|kubernetes|ecs.
-- apigw_definition (map):
-  - name (string, required)
-  - version (string, required)
-  - file_name (string, required) — without extension; .yaml or .json will be resolved.
-  - domain_name (string, optional) — custom domain to map.
-  - mapping (string, optional) — base path mapping key.
-  - stage_variables (list(object({name=string,value=string}))), optional.
-- aws_configuration (map):
-  - stage (string, required)
-  - stage_only (bool, default false)
-  - http_api (bool, default false) — true for HTTP APIs (v2), false for REST (v1).
-  - endpoint_type (string, default "REGIONAL") — REST only.
-  - client_certificate_id (string, optional) — API Gateway client certificate ID.
-  - vpc_endpoint_ids (list(string), optional) — REST when endpoint_type==PRIVATE.
-  - disable_execute_api_endpoint (bool, default true for REST)
-  - minimum_compression_size (number|null)
-  - xray_enabled (bool)
-  - cache_cluster_enabled (bool) / cache_cluster_size (string|number) — REST stages
-  - rest_vpc_link_name (string) — REST VPC Link name (replaces deprecated vpc_link_name)
-  - http_vpc_link (object) — HTTP API VPC link; { id = "vpcl-..." } or { type = "lb|cloudmap", lb = { name, listener_port }, server_name }
-  - fail_on_warnings (bool, default true) — disable to allow warnings during deployment
-  - log_location (string, default "/aws/apigateway")
-  - log_retention_days (number, default 30)
-  - waf (object, REST only) — WAF web ACL association: { enabled = bool, name = string, arn = string, scope = "REGIONAL|CLOUDFRONT" }
-  - publish_bucket (object, optional) — S3 backup configuration: { enabled = bool, name = string, prefix_path = string }
-  - custom_parameters (list(object({name=string,value=string}))) — injected into templatefile variables
-  - stage_variables (list(object({name=string,value=string})))
-  - lambda_options (object, HTTP only) — Lambda integration: { format_version, responses, pass_through_behavior, timeout_millis, content_handling }
-  - authorizers (list) — Lambda authorizers catalog with optional scheme configuration (see example)
-  - cors (object) — HTTP APIs only: allow_headers, allow_methods, allow_origins, expose_headers, max_age
-  - settings (map) — comprehensive stage/route settings: logging_level, metrics_enabled, data_trace_enabled, throttling_burst_limit, throttling_rate_limit, caching_enabled, cache_ttl_in_seconds, cache_data_encrypted, require_authorization_for_cache_control, unauthorized_cache_control_header_strategy
-- absolute_path (string, default ".")
-- release (map, optional): Used to resolve Lambda function and IAM role names when cloud_type==lambda.
-- extra_tags (map(string), default {}): Merged with common tags.
-
-Notes:
-- The module writes a CloudWatch Log Group at {log_location}/{stage}/{name}/{version} with retention log_retention_days.
-- When cloud_type==lambda and http_api==true, the module injects an HTTP API integration in x-amazon-apigateway-integrations.
-- Lambda function and exec role are looked up by data sources using names: "${release.name}-${environment}" and "${release.name}-${environment}-exec-role" respectively.
-- For REST APIs, include the x-amazon-apigateway-integration in your spec and reference ${lambdaEndpoint} and ${lambdaFunctionExecRoleArn} as needed.
 
 ## Quick Start
 
-1. Add your API spec to the repository under apifiles/.
-   Example: apifiles/orders.yaml
+1. **Scaffold** a deployment directory:
+   ```sh
+   mkdir -p dev/us-east-1/001/apis/orders && cd dev/us-east-1/001/apis/orders
+   terragrunt scaffold github.com/cloudopsworks/terraform-module-aws-api-gateway-apis-deploy
+   ```
+2. **Add the spec** as `apifiles/orders.yaml`:
    ```yaml
    openapi: 3.0.1
    info: { title: orders, version: v1 }
@@ -229,115 +424,126 @@ Notes:
            httpMethod: POST
            uri: ${lambdaEndpoint}
            credentials: ${lambdaFunctionExecRoleArn}
+           payloadFormatVersion: "2.0"
    ```
-
-2. Create your environment configuration under .github/vars/apigw/ aligned with the templates:
+3. **Set the inputs** in `inputs.yaml`:
    ```yaml
-   # .github/vars/apigw/dev.yaml
    environment: dev
    cloud_type: lambda
-   org:
-     organization_name: acme
-     organization_unit: payments
-     environment_type: nonprod
-     environment_name: dev
    release:
      name: orders
    apigw_definition:
      name: orders
      version: v1
      file_name: orders
-     domain_name: api.dev.example.com
-     mapping: orders
    aws_configuration:
      stage: dev
      http_api: true
-     cors:
-       allow_methods: [GET, POST, OPTIONS]
-       allow_origins: ["*"]
-     settings:
-       logging_level: INFO
-       throttling_burst_limit: 200
-       throttling_rate_limit: 100
    ```
+4. **Apply** with `terragrunt apply` and read `stage_invoke_url` from the outputs.
 
-3. Commit and push. When used with Cloud Ops Works app templates (python, java, node, go, dotnet, rust), your CI pipeline will consume this YAML and apply the module accordingly.
+**Troubleshooting**
 
-4. Tips & troubleshooting:
-   - Set `debug = true` to emit the rendered spec as apifiles/<file>_final.json and _final.yaml for inspection.
-   - Ensure IAM permissions allow API Gateway, CloudWatch Logs, Lambda (if used), and apigateway domain lookups.
-   - For REST APIs behind Private endpoint_type, provide vpc_endpoint_ids.
-   - For HTTP APIs with VPC Link to ALB, set http_vpc_link = { type = "lb", lb = { name, listener_port }, server_name }.
-   - Use stage_only = true to update only the stage configuration of an existing API.
+| Symptom | Fix |
+|---|---|
+| `Invalid function argument` / file not found for the spec | Check `absolute_path` + `api_files_dir` + `file_name`; with Terragrunt keep the scaffolded `get_terragrunt_dir()` default |
+| `vars map does not contain key "stageVariables"` | Escape API Gateway expressions as `$${...}` |
+| Import fails on spec warnings | Fix the spec, or set `aws_configuration.fail_on_warnings: false` |
+| Need to inspect what was deployed | Set `debug: true` to write `<file_name>_final.json` and `_final.yaml` |
+| `stage_only` finds no API | Run a full deployment first; the lookup uses `apigw_definition.name` |
 
 
 ## Examples
 
-Below are opinionated examples aligned with common Cloud Ops Works templates. Adjust values to your org.
+Each example is the `inputs.yaml` of a scaffolded deployment (or the `.github/vars/apigw/<env>.yaml` of an
+application repository). The spec file lives in `apifiles/<file_name>.yaml`.
 
-1) Python API (Lambda, HTTP API with CORS and Lambda authorizer)
+### 1. Lambda HTTP API with CORS and a Lambda authorizer
+
 ```yaml
 environment: dev
 cloud_type: lambda
-org:
-  organization_name: acme
-  organization_unit: payments
-  environment_type: nonprod
-  environment_name: dev
 release:
-  name: python-svc
+  name: orders                       # Lambda "orders-dev", role "orders-dev-exec-role"
 apigw_definition:
-  name: python-svc
+  name: orders
   version: v1
-  file_name: python-svc
+  file_name: orders
   domain_name: api.dev.example.com
-  mapping: python
+  mapping: orders
 aws_configuration:
   stage: dev
   http_api: true
-  cors: { allow_origins: ["*"], allow_methods: [GET, POST, OPTIONS] }
-  settings: { logging_level: INFO, throttling_burst_limit: 100, throttling_rate_limit: 50 }
+  cors:
+    allow_origins: ["https://app.dev.example.com"]
+    allow_methods: [GET, POST, OPTIONS]
+    allow_headers: [Authorization, Content-Type]
+  settings:
+    throttling_burst_limit: 200
+    throttling_rate_limit: 100
   authorizers:
     - name: Lambda-Auth
       authtype: lambda
       type: request
       identity_source: "$request.header.Authorization"
+      result_ttl_seconds: 300
+      enable_simple_responses: true
       lambda:
         function: auth-dev
-        exec_role: auth-dev-lambda-exec-role
+        exec_role: auth-dev-exec-role
 ```
 
-2) Node.js API (Lambda, custom base path mapping)
+### 2. Lambda REST API with caching, WAF and S3 spec backup
+
 ```yaml
-environment: qa
+environment: prod
 cloud_type: lambda
-org:
-  organization_name: acme
-  organization_unit: web
-  environment_type: nonprod
-  environment_name: qa
 release:
-  name: node-svc
+  name: billing
 apigw_definition:
-  name: node-svc
+  name: billing
   version: v2
-  file_name: node-svc
-  domain_name: api.qa.example.com
-  mapping: node
+  file_name: billing
+  domain_name: api.example.com
+  mapping: billing/v2
 aws_configuration:
-  stage: qa
-  http_api: true
+  stage: prod
+  endpoint_type: REGIONAL
+  xray_enabled: true
+  cache_cluster_enabled: true
+  cache_cluster_size: "0.5"
+  log_retention_days: 90
+  waf:
+    enabled: true
+    name: api-waf-prod               # or arn: arn:aws:wafv2:...
+  settings:
+    logging_level: ERROR
+    metrics_enabled: true
+    caching_enabled: true
+    cache_ttl_in_seconds: 300
+    cache_data_encrypted: true
+    throttling_burst_limit: 1000
+    throttling_rate_limit: 500
+  publish_bucket:
+    enabled: true
+    name: acme-apigw-specs-prod
+    prefix_path: billing
+  authorizers:
+    - name: Token-Auth
+      authtype: lambda
+      type: token
+      identity_source: method.request.header.Authorization
+      result_ttl_seconds: 300
+      lambda:
+        function: auth-prod
+        exec_role: auth-prod-exec-role
 ```
 
-3) Java API on ECS (HTTP API via VPC Link to ALB with Lambda options)
+### 3. ECS / EKS service behind an HTTP API VPC Link and ALB
+
 ```yaml
 environment: prod
 cloud_type: ecs
-org:
-  organization_name: acme
-  organization_unit: platform
-  environment_type: prod
-  environment_name: prod
 apigw_definition:
   name: catalog
   version: v1
@@ -348,137 +554,73 @@ aws_configuration:
   stage: prod
   http_api: true
   http_vpc_link:
-    type: lb
-    server_name: internal.catalog.svc
-    lb: { name: alb-catalog-prod, listener_port: 80 }
-  lambda_options:
-    format_version: "1.0"
-    pass_through_behavior: when_no_match
-    timeout_millis: 30000
-    content_handling: CONVERT_TO_TEXT
-  settings: 
-    logging_level: ERROR
-    metrics_enabled: true
-    throttling_burst_limit: 500
-    throttling_rate_limit: 250
-  publish_bucket:
-    enabled: true
-    name: catalog-apigw-backup-prod
-    prefix_path: catalog
-```
-# In your OpenAPI for HTTP API, use the stage variable for VPC Link connectionId:
-# x-amazon-apigateway-integration:
-#   type: HTTP_PROXY
-#   httpMethod: ANY
-#   connectionType: VPC_LINK
-#   connectionId: ${stageVariables.vpc_link}
-#   payloadFormatVersion: "1.0"
-#   uri: http://internal.catalog.svc/health
+    id: abcde1                       # exposed as stage variable "vpc_link"
+    type: lb                         # exposes elb.endpoint / elb.server_name
+    server_name: catalog.internal.example.com
+    lb:
+      name: alb-catalog-prod
+      listener_port: 443
 ```
 
-4) Go API on EKS (HTTP API via VPC Link to ALB)
+Matching integration in `apifiles/catalog.yaml` (note the escaped stage variable):
+
 ```yaml
-environment: prod
+x-amazon-apigateway-integration:
+  type: http_proxy
+  httpMethod: ANY
+  connectionType: VPC_LINK
+  connectionId: $${stageVariables.vpc_link}
+  payloadFormatVersion: "1.0"
+  uri: ${elb.endpoint}
+  tlsConfig:
+    serverNameToVerify: ${elb.server_name}
+```
+
+### 4. Private REST API reachable only through VPC endpoints
+
+Private APIs also need a resource policy allowing the VPC endpoint, declared in the spec under
+`x-amazon-apigateway-policy`.
+
+```yaml
+environment: qa
 cloud_type: eks
-org:
-  organization_name: acme
-  organization_unit: platform
-  environment_type: prod
-  environment_name: prod
 apigw_definition:
-  name: go-svc
+  name: internal-admin
   version: v1
-  file_name: go-svc
+  file_name: internal-admin
 aws_configuration:
-  stage: prod
-  http_api: true
-  http_vpc_link:
-    type: lb
-    server_name: go-svc.internal
-    lb: { name: alb-go-prod, listener_port: 80 }
+  stage: qa
+  endpoint_type: PRIVATE
+  disable_execute_api_endpoint: false # private APIs are reached through the execute-api endpoint
+  vpc_endpoint_ids:
+    - vpce-0123456789abcdef0
+  put_rest_api_mode: merge
+  rest_vpc_link_name: nlb-link-qa    # exposed as stage variable "vpc_link"
+  custom_parameters:
+    - name: backend_host
+      value: admin.qa.svc.cluster.local
 ```
 
-5) .NET API (Lambda, REST API with caching and WAF protection)
+### 5. Stage-only rollout onto an existing API
+
+Deploys a new `canary` stage of the API created by another deployment, without touching the API itself.
+
 ```yaml
 environment: prod
 cloud_type: lambda
-org:
-  organization_name: acme
-  organization_unit: erp
-  environment_type: prod
-  environment_name: prod
 release:
-  name: dotnet-svc
+  name: orders
 apigw_definition:
-  name: dotnet-svc
+  name: orders                       # existing API looked up by name
   version: v1
-  file_name: dotnet-svc
-  domain_name: api.example.com
-  mapping: dotnet
+  file_name: orders
+  domain_name: canary.api.example.com
+  mapping: orders
 aws_configuration:
-  stage: prod
-  http_api: false
-  endpoint_type: REGIONAL
-  client_certificate_id: cert-12345abcdef
-  cache_cluster_enabled: true
-  cache_cluster_size: 0.5
-  waf:
-    enabled: true
-    name: dotnet-api-waf-prod
-    scope: REGIONAL
-  settings:
-    logging_level: ERROR
-    metrics_enabled: true
-    data_trace_enabled: false
-    caching_enabled: true
-    cache_ttl_in_seconds: 300
-    cache_data_encrypted: true
-    require_authorization_for_cache_control: true
-    unauthorized_cache_control_header_strategy: FAIL_WITH_403
-    throttling_burst_limit: 1000
-    throttling_rate_limit: 500
-  authorizers:
-    - name: Enhanced-Auth
-      scheme:
-        name: Authorization
-        in: header
-        type: apiKey
-        authtype: custom
-      authtype: lambda
-      result_ttl_seconds: 300
-      identity_source: method.request.header.Authorization
-      lambda:
-        function: dotnet-auth-prod
-        exec_role: dotnet-auth-prod-exec-role
-```
-
-6) Rust API (Lambda, minimal HTTP API)
-```yaml
-environment: dev
-cloud_type: lambda
-org:
-  organization_name: acme
-  organization_unit: lab
-  environment_type: nonprod
-  environment_name: dev
-release:
-  name: rust-svc
-apigw_definition:
-  name: rust-svc
-  version: v1
-  file_name: rust-svc
-aws_configuration:
-  stage: dev
+  stage: canary
+  stage_only: true
   http_api: true
 ```
-
-For real‑world repository layouts and CI variables, see:
-- https://github.com/cloudopsworks/python-app-template/tree/master/.github/vars/apigw
-- https://github.com/cloudopsworks/java-app-template
-- https://github.com/cloudopsworks/node-app-template
-- https://github.com/cloudopsworks/go-app-template
-- https://github.com/cloudopsworks/dotnet-app-template
-- https://github.com/cloudopsworks/rust-app-template
 
 
 
