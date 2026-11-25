@@ -188,7 +188,7 @@ resource "aws_apigatewayv2_stage" "staged" {
 
 resource "aws_apigatewayv2_api_mapping" "staged" {
   count           = local.deploy_stage_only == true && try(var.apigw_definition.domain_name, "") != "" ? 1 : 0
-  api_id          = local.is_http_api ? tolist(data.aws_apigatewayv2_apis.staged[0].id)[0] : data.aws_api_gateway_rest_api.staged[0].id
+  api_id          = local.is_http_api ? tolist(data.aws_apigatewayv2_apis.staged[0].ids)[0] : data.aws_api_gateway_rest_api.staged[0].id
   stage           = local.is_http_api ? aws_apigatewayv2_stage.staged[0].name : aws_api_gateway_stage.staged[0].stage_name
   domain_name     = data.aws_api_gateway_domain_name.this[0].id
   api_mapping_key = var.apigw_definition.mapping

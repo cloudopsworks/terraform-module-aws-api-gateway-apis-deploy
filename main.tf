@@ -99,6 +99,11 @@ locals {
       components = local.components
     }
   )
+
+  # Deployed stage, regardless of full-API or stage-only mode (null for the API type not in use)
+  http_stage          = one(concat(aws_apigatewayv2_stage.this, aws_apigatewayv2_stage.staged))
+  rest_stage          = one(concat(aws_api_gateway_stage.this, aws_api_gateway_stage.staged))
+  stage_execution_arn = try(local.http_stage.execution_arn, local.rest_stage.execution_arn)
 }
 
 resource "local_file" "final_content_json" {
@@ -130,7 +135,7 @@ resource "aws_lambda_permission" "lambda_function" {
   count               = local.is_lambda ? 1 : 0
   action              = "lambda:InvokeFunction"
   principal           = "apigateway.amazonaws.com"
-  source_arn          = format("%s/*", local.is_http_api ? aws_apigatewayv2_stage.this[0].execution_arn : aws_api_gateway_stage.this[0].execution_arn)
+  source_arn          = format("%s/*", local.stage_execution_arn)
   function_name       = data.aws_lambda_function.lambda_function[0].arn
   statement_id_prefix = format("apicall-%s", var.apigw_definition.name)
 }
