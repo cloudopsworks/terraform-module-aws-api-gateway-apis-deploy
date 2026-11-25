@@ -1,0 +1,15 @@
+openapi: 3.0.1
+info:
+  title: catalog
+  description: Catalog test API behind an HTTP API VPC Link
+  version: v1
+paths:
+  /health:
+    get:
+      x-amazon-apigateway-integration:
+        type: http_proxy
+        httpMethod: GET
+        connectionType: VPC_LINK
+        connectionId: $${stageVariables.vpc_link}
+        payloadFormatVersion: "1.0"
+        uri: ${elb.endpoint}

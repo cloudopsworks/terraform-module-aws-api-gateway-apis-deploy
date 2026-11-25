@@ -1,5 +1,5 @@
 ##
-# (c) 2021-2025
+# (c) 2021-2026
 #     Cloud Ops Works LLC - https://cloudops.works/
 #     Find us on:
 #       GitHub: https://github.com/cloudopsworks
@@ -128,7 +128,7 @@ data "aws_api_gateway_rest_api" "staged" {
 }
 
 resource "aws_api_gateway_deployment" "staged" {
-  count       = local.deploy_stage_only == true ? 1 : 0
+  count       = local.deploy_stage_only == true && (!local.is_http_api) ? 1 : 0
   rest_api_id = data.aws_api_gateway_rest_api.staged[0].id
   description = "Deployment for ${var.apigw_definition.name} - ${var.environment} - Fingerprint: ${local.sha1}"
   triggers = {
@@ -191,8 +191,8 @@ resource "aws_api_gateway_stage" "staged" {
 # Logs are only applied at stage level, so if we are deploying only stage, we need to apply method settings to it as well
 resource "aws_api_gateway_method_settings" "staged" {
   count       = local.deploy_stage_only == true && (!local.is_http_api) ? 1 : 0
-  rest_api_id = aws_api_gateway_rest_api.this[0].id
-  stage_name  = aws_api_gateway_stage.this[0].stage_name
+  rest_api_id = data.aws_api_gateway_rest_api.staged[0].id
+  stage_name  = aws_api_gateway_stage.staged[0].stage_name
   method_path = "*/*"
   settings {
     logging_level                              = try(var.aws_configuration.settings.logging_level, "ERROR")
@@ -208,14 +208,15 @@ resource "aws_api_gateway_method_settings" "staged" {
   }
 }
 
+# WAF Web ACL lookup by name, only when no ARN is provided
 data "aws_wafv2_web_acl" "waf" {
-  count = try(var.aws_configuration.waf.enabled, false) && try(var.aws_configuration.waf.arn, "") != "" ? 1 : 0
+  count = try(var.aws_configuration.waf.enabled, false) && try(var.aws_configuration.waf.arn, "") == "" && !local.is_http_api ? 1 : 0
   name  = var.aws_configuration.waf.name
   scope = try(var.aws_configuration.waf.scope, "REGIONAL")
 }
 
 resource "aws_wafv2_web_acl_association" "waf" {
-  count        = try(var.aws_configuration.waf.enabled, false) && length(data.aws_wafv2_web_acl.waf) > 0 && !local.is_http_api ? 1 : 0
-  web_acl_arn  = try(var.aws_configuration.waf.arn, "") != "" ? data.aws_wafv2_web_acl.waf[0].arn : var.aws_configuration.waf.arn
+  count        = try(var.aws_configuration.waf.enabled, false) && !local.is_http_api ? 1 : 0
+  web_acl_arn  = try(var.aws_configuration.waf.arn, "") != "" ? var.aws_configuration.waf.arn : data.aws_wafv2_web_acl.waf[0].arn
   resource_arn = local.deploy_stage_only == false ? aws_api_gateway_stage.this[0].arn : aws_api_gateway_stage.staged[0].arn
 }

@@ -1,5 +1,5 @@
 ##
-# (c) 2021-2025
+# (c) 2021-2026
 #     Cloud Ops Works LLC - https://cloudops.works/
 #     Find us on:
 #       GitHub: https://github.com/cloudopsworks
@@ -50,16 +50,16 @@ locals {
     "${var.absolute_path}/${var.api_files_dir}/${var.apigw_definition.file_name}.yaml"
   )
 
-  #
-  # FIXME: The components will be not used in the current code, so they are commented out.
+  # OpenAPI components: keep the spec's own components, inject the Lambda authorizers as
+  # securitySchemes and, for Lambda-backed HTTP APIs, the shared Lambda integration.
   components = merge(
     {
-      for cname, cvalue in local.content.components : cname => cvalue
+      for cname, cvalue in try(local.content.components, {}) : cname => cvalue
       if cname != "securitySchemes"
     },
     {
       "securitySchemes" = {
-        for auth in var.aws_configuration.authorizers : auth.name => {
+        for auth in try(var.aws_configuration.authorizers, []) : auth.name => {
           name                           = try(auth.scheme.name, "Authorization")
           type                           = try(auth.scheme.type, "apiKey")
           in                             = try(auth.scheme.in, "header")
@@ -99,6 +99,11 @@ locals {
       components = local.components
     }
   )
+
+  # Deployed stage, regardless of full-API or stage-only mode (null for the API type not in use)
+  http_stage          = one(concat(aws_apigatewayv2_stage.this, aws_apigatewayv2_stage.staged))
+  rest_stage          = one(concat(aws_api_gateway_stage.this, aws_api_gateway_stage.staged))
+  stage_execution_arn = try(local.http_stage.execution_arn, local.rest_stage.execution_arn)
 }
 
 resource "local_file" "final_content_json" {
@@ -130,7 +135,7 @@ resource "aws_lambda_permission" "lambda_function" {
   count               = local.is_lambda ? 1 : 0
   action              = "lambda:InvokeFunction"
   principal           = "apigateway.amazonaws.com"
-  source_arn          = format("%s/*", local.is_http_api ? aws_apigatewayv2_stage.this[0].execution_arn : aws_api_gateway_stage.this[0].execution_arn)
+  source_arn          = format("%s/*", local.stage_execution_arn)
   function_name       = data.aws_lambda_function.lambda_function[0].arn
   statement_id_prefix = format("apicall-%s", var.apigw_definition.name)
 }
@@ -140,7 +145,7 @@ resource "aws_lambda_permission" "lambda_function" {
 #################################################################
 data "aws_lambda_function" "lambda_authorizer" {
   for_each = {
-    for auth in var.aws_configuration.authorizers :
+    for auth in try(var.aws_configuration.authorizers, []) :
     auth.name => auth
     if auth.authtype == "lambda"
   }
@@ -149,7 +154,7 @@ data "aws_lambda_function" "lambda_authorizer" {
 
 data "aws_iam_role" "lambda_auth_exec_role" {
   for_each = {
-    for auth in var.aws_configuration.authorizers :
+    for auth in try(var.aws_configuration.authorizers, []) :
     auth.name => auth
     if auth.authtype == "lambda"
   }
@@ -171,7 +176,7 @@ resource "aws_apigatewayv2_api_mapping" "this" {
 
 resource "aws_lambda_permission" "this" {
   for_each = {
-    for auth in var.aws_configuration.authorizers : auth.name => {
+    for auth in try(var.aws_configuration.authorizers, []) : auth.name => {
       auth_name = auth.name
     } if auth.authtype == "lambda" && local.deploy_stage_only == false
   }
@@ -184,7 +189,7 @@ resource "aws_lambda_permission" "this" {
 
 resource "aws_lambda_permission" "staged" {
   for_each = {
-    for auth in var.aws_configuration.authorizers : auth.name => {
+    for auth in try(var.aws_configuration.authorizers, []) : auth.name => {
       auth_name = auth.name
     } if auth.authtype == "lambda" && local.deploy_stage_only == true
   }

@@ -1,5 +1,5 @@
 ##
-# (c) 2021-2025
+# (c) 2021-2026
 #     Cloud Ops Works LLC - https://cloudops.works/
 #     Find us on:
 #       GitHub: https://github.com/cloudopsworks
@@ -109,7 +109,7 @@ resource "aws_apigatewayv2_stage" "this" {
       throttling_rate_limit    = try(var.aws_configuration.settings.throttling_rate_limit, null)
       data_trace_enabled       = try(var.aws_configuration.settings.data_trace_enabled, null)
       detailed_metrics_enabled = try(var.aws_configuration.settings.detailed_metrics_enabled, null)
-      logging_level            = try(var.aws_configuration.settings.logging_level, "ERROR")
+      logging_level            = try(var.aws_configuration.settings.logging_level, null)
     }
   }
   tags = local.all_tags
@@ -188,7 +188,7 @@ resource "aws_apigatewayv2_stage" "staged" {
 
 resource "aws_apigatewayv2_api_mapping" "staged" {
   count           = local.deploy_stage_only == true && try(var.apigw_definition.domain_name, "") != "" ? 1 : 0
-  api_id          = local.is_http_api ? tolist(data.aws_apigatewayv2_apis.staged[0].id)[0] : data.aws_api_gateway_rest_api.staged[0].id
+  api_id          = local.is_http_api ? tolist(data.aws_apigatewayv2_apis.staged[0].ids)[0] : data.aws_api_gateway_rest_api.staged[0].id
   stage           = local.is_http_api ? aws_apigatewayv2_stage.staged[0].name : aws_api_gateway_stage.staged[0].stage_name
   domain_name     = data.aws_api_gateway_domain_name.this[0].id
   api_mapping_key = var.apigw_definition.mapping
